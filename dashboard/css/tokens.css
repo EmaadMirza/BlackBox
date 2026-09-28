@@ -1,0 +1,18 @@
+:root {
+    --bg: #0A0A0B;
+    --surface: #131316;
+    --surface-2: #1A1A1E;
+    --border: #26262C;
+    --red: #E4002B;
+    --crimson: #7A0C1A;
+    --white: #F5F5F6;
+    --grey-100: #E2E2E5;
+    --grey-400: #9A9AA0;
+    --text-2: #A1A1AA;
+
+    --font-heading: 'Plus Jakarta Sans', Outfit, Inter, sans-serif;
+    --font-body: 'Plus Jakarta Sans', Outfit, Inter, sans-serif;
+    --font-mono: 'JetBrains Mono', monospace;
+
+    --glow-hero: radial-gradient(ellipse at 85% 40%, rgba(122,12,26,.75) 0%, rgba(74,14,24,.45) 35%, transparent 70%);
+}

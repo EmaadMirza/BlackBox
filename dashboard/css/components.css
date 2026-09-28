@@ -1,0 +1,158 @@
+/* Cards */
+.card {
+    background-color: var(--surface);
+    border-radius: 12px;
+    padding: 2rem;
+    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.2);
+    position: relative;
+    overflow: hidden;
+    margin-bottom: 2rem;
+}
+
+.hero-card {
+    background: var(--glow-hero), var(--surface);
+}
+
+.card-credit {
+    position: absolute;
+    bottom: 12px;
+    right: 16px;
+    font-size: 12px;
+    color: var(--grey-400);
+}
+
+/* Accordion */
+.accordion {
+    width: 100%;
+    margin-bottom: 1rem;
+}
+
+.accordion-header {
+    background-color: var(--surface-2);
+    padding: 1.25rem 1.5rem;
+    border-radius: 8px;
+    cursor: pointer;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    font-weight: 700;
+    transition: background-color 0.2s;
+}
+
+.accordion-header:hover {
+    background-color: var(--border);
+}
+
+.accordion-chevron {
+    transition: transform 0.2s;
+}
+
+.accordion.open .accordion-chevron {
+    transform: rotate(180deg);
+}
+
+.accordion-content {
+    display: none;
+    padding: 1.5rem;
+    background-color: var(--bg);
+    border: 1px solid var(--surface-2);
+    border-top: none;
+    border-radius: 0 0 8px 8px;
+}
+
+.accordion.open .accordion-content {
+    display: block;
+}
+
+/* Meta Rows */
+.meta-rows {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+    margin-bottom: 3rem;
+    font-size: 0.9rem;
+    color: var(--grey-400);
+}
+
+.meta-row {
+    display: flex;
+    justify-content: space-between;
+    border-bottom: 1px solid var(--border);
+    padding-bottom: 0.5rem;
+}
+
+/* Swatch Stack */
+.swatch-stack-container {
+    display: flex;
+    gap: 1rem;
+    justify-content: center;
+    margin: 2rem 0;
+}
+
+.swatch-card {
+    width: 60px;
+    height: 80px;
+    border-radius: 8px;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    transition: transform 0.2s;
+}
+
+.swatch-card.raised {
+    transform: translateY(-10px);
+}
+
+.swatch-band {
+    flex: 1;
+}
+.swatch-band-1 { background-color: var(--white); }
+.swatch-band-2 { background-color: var(--grey-100); }
+.swatch-band-3 { background-color: var(--grey-400); }
+.swatch-band-4 { background-color: var(--red); }
+.swatch-band-5 { background-color: var(--crimson); }
+.swatch-band-6 { background-color: var(--bg); }
+
+/* Badges */
+.badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.25rem 0.75rem;
+    border-radius: 4px;
+    font-size: 0.85rem;
+    font-weight: 700;
+}
+.badge-verified {
+    background-color: var(--white);
+    color: var(--bg);
+}
+.badge-tampered {
+    background-color: var(--red);
+    color: var(--white);
+}
+.badge-missing {
+    border: 1px dashed var(--red);
+    color: var(--red);
+}
+.badge-unverified {
+    border: 1px solid var(--grey-400);
+    color: var(--grey-400);
+}
+
+/* Drawer */
+.drawer {
+    position: fixed;
+    top: 0;
+    right: -300px;
+    width: 250px;
+    height: 100vh;
+    background-color: var(--surface);
+    z-index: 1000;
+    transition: right 0.3s ease;
+    padding: 2rem;
+    border-left: 1px solid var(--border);
+}
+.drawer.open {
+    right: 0;
+}

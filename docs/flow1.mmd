@@ -1,0 +1,19 @@
+sequenceDiagram
+    participant C as Client
+    participant GW as Gateway
+    participant O as Origin
+    participant L as Ledger
+    participant W as Witness
+
+    C->>GW: 1. Signed request
+    GW->>GW: 2. Pipeline (Sanity, Sig, Rate, Rules, Policy)
+    GW->>L: 3. Seal Intent entry
+    GW->>O: 4. Forward with gateway header
+    O-->>GW: 5. Origin response
+    GW->>L: 6. Seal Outcome entry
+    GW-->>C: 7. Response to client
+    
+    Note over L,W: Checkpoint generation
+    L->>W: 8. Checkpoint created
+    W->>W: 9. Verify consistency
+    W-->>L: 10. Cosign checkpoint

@@ -1,0 +1,17 @@
+sequenceDiagram
+    participant A as Agent SDK
+    participant GW as Gateway
+    participant H as Human
+    participant P as Provider
+    participant L as Ledger
+
+    A->>GW: 1. Action requested (no keys)
+    GW->>L: 2. Seal Intent entry FIRST
+    GW->>GW: 3. Policy check (requires approval)
+    GW->>H: 4. Request approval
+    H-->>GW: 5. Action approved
+    GW->>GW: 6. Broker injects provider credentials
+    GW->>P: 7. Execute call at Provider
+    P-->>GW: 8. Provider response
+    GW->>L: 9. Seal Outcome entry
+    GW-->>A: 10. Action result
