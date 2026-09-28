@@ -3,7 +3,7 @@
 
 > **Cryptography remembers. AI investigates. Humans stay in control.** 
 
-BlackBox is a tamper-proof security gateway and verifiable flight recorder for web apps, APIs, and AI agents. It intercepts all traffic, applies strict egress/ingress rules, and writes a cryptographically sealed, hash-chained entry for every intent and outcome. If an attacker breaches your server and attempts to alter logs to cover their tracks, BlackBox mathematically proves the tampering and tells you exactly what to restore.
+BlackBox is a tamper-proof security gateway and verifiable flight recorder for web apps, APIs, and AI agents. It intercepts all traffic, applies strict egress/ingress rules, and writes a cryptographically sealed, hash-chained entry for every intent and outcome. If an attacker breaches your server and attempts to alters the logs to cover their tracks, BlackBox mathematically proves the tampering and tells you exactly what to restore.
 
 ![Hero Screenshot Placeholder](docs/reference/hero-placeholder.png)
 
