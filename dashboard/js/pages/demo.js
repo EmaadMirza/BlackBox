@@ -75,5 +75,39 @@ export function renderDemo(container) {
         if(e.key === 'Escape') container.querySelector('#demo-close')?.click();
     });
 
+    // Make the card draggable
+    const card = container.querySelector('#demo-overlay-card');
+    const header = card.firstElementChild;
+    header.style.cursor = 'grab';
+    
+    let isDragging = false;
+    let startX, startY, initialX = 0, initialY = 0;
+
+    header.addEventListener('mousedown', (e) => {
+        isDragging = true;
+        header.style.cursor = 'grabbing';
+        startX = e.clientX;
+        startY = e.clientY;
+        if (card.dataset.x) initialX = parseFloat(card.dataset.x);
+        if (card.dataset.y) initialY = parseFloat(card.dataset.y);
+    });
+
+    document.addEventListener('mousemove', (e) => {
+        if (!isDragging) return;
+        e.preventDefault(); // Prevent text selection while dragging
+        const dx = e.clientX - startX;
+        const dy = e.clientY - startY;
+        const newX = initialX + dx;
+        const newY = initialY + dy;
+        card.dataset.x = newX;
+        card.dataset.y = newY;
+        card.style.transform = `translate(${newX}px, ${newY}px)`;
+    });
+
+    document.addEventListener('mouseup', () => {
+        isDragging = false;
+        header.style.cursor = 'grab';
+    });
+
     renderStep();
 }
