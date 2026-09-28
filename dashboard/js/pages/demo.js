@@ -3,22 +3,22 @@ import { stream } from '../stream.js';
 export function renderDemo(container) {
     container.innerHTML = `
         <div style="position: fixed; top: 0; left: 0; width: 100%; height: 100%; z-index: 9999; pointer-events: none;">
-            <div id="demo-overlay-card" class="card" style="position: absolute; bottom: 40px; right: 40px; width: 350px; background: var(--bg); border: 2px solid var(--red); pointer-events: auto; box-shadow: 0 10px 30px rgba(0,0,0,0.8);">
-                <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid var(--border); padding-bottom: 0.5rem; margin-bottom: 1rem;">
-                    <h3 style="font-size: 1.1rem;">Guided Demo</h3>
-                    <span id="demo-progress" style="font-family: var(--font-mono); font-size: 0.8rem; color: var(--grey-400);">Step 1 / 12</span>
+            <div id="demo-overlay-card" class="card" style="position: absolute; bottom: 40px; right: 40px; width: 450px; background: rgba(10, 10, 10, 0.95); backdrop-filter: blur(10px); border: 2px solid var(--red); pointer-events: auto; box-shadow: 0 15px 40px rgba(0,0,0,0.9); padding: 2rem; border-radius: 8px;">
+                <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid var(--border); padding-bottom: 1rem; margin-bottom: 1.5rem;">
+                    <h3 style="font-size: 1.6rem; margin: 0; color: var(--white); text-transform: uppercase; letter-spacing: 1px;">Guided Demo</h3>
+                    <span id="demo-progress" style="font-family: var(--font-mono); font-size: 1rem; color: var(--red);">Step 1 / 12</span>
                 </div>
                 
-                <p id="demo-caption" style="font-size: 0.95rem; color: var(--white); margin-bottom: 1.5rem; line-height: 1.5;"></p>
+                <p id="demo-caption" style="font-size: 1.2rem; color: var(--white); margin-bottom: 2rem; line-height: 1.6; font-weight: 500;"></p>
                 
-                <div style="display: flex; gap: 0.5rem;">
-                    <button class="btn btn-secondary" style="flex: 1;" id="demo-prev">Prev</button>
-                    <button class="btn btn-primary" style="flex: 2;" id="demo-next">Next (→)</button>
+                <div style="display: flex; gap: 1rem;">
+                    <button class="btn btn-secondary" style="flex: 1; padding: 0.8rem; font-size: 1.1rem;" id="demo-prev">Prev</button>
+                    <button class="btn btn-primary" style="flex: 2; padding: 0.8rem; font-size: 1.1rem; font-weight: bold;" id="demo-next">Next (→)</button>
                 </div>
                 
-                <div style="margin-top: 1rem; text-align: center;">
-                    <button class="btn btn-secondary" style="font-size: 0.7rem; color: var(--grey-400); background: transparent; border: none; text-decoration: underline;" id="demo-close">Exit Demo</button>
-                    <button class="btn btn-secondary" style="font-size: 0.7rem; color: var(--red); background: transparent; border: none; text-decoration: underline; margin-left: 1rem;" onclick="stream.reset()">Reset Engine</button>
+                <div style="margin-top: 1.5rem; display: flex; justify-content: space-between; align-items: center;">
+                    <button class="btn btn-secondary" style="font-size: 0.85rem; color: var(--grey-400); background: transparent; border: none; text-decoration: underline; padding: 0;" id="demo-close">Exit Demo</button>
+                    <button class="btn btn-secondary" style="font-size: 0.85rem; color: var(--red); background: transparent; border: none; text-decoration: underline; padding: 0;" onclick="stream.reset()">Reset Engine</button>
                 </div>
             </div>
             <div id="spotlight-overlay" style="position: absolute; top:0; left:0; width:100%; height:100%; background: rgba(0,0,0,0.5); z-index: -1; display: none;"></div>
