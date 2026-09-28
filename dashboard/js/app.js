@@ -9,6 +9,8 @@ import { renderRecovery } from './pages/recovery.js';
 import { renderLimits } from './pages/limits.js';
 import { renderDemo } from './pages/demo.js';
 
+let lastHash = '#home';
+
 const routes = {
     '': renderHome,
     '#home': renderHome,
@@ -21,12 +23,16 @@ const routes = {
     '#recovery': renderRecovery,
     '#limits': renderLimits,
     '#demo': (root) => {
-        // Special case: demo overlay attaches to a separate div, main view stays home
-        window.location.hash = '#home';
-        const overlay = document.createElement('div');
-        overlay.id = 'demo-root';
-        document.body.appendChild(overlay);
-        renderDemo(overlay);
+        // Restore the page we were on before clicking demo
+        window.location.hash = lastHash;
+        
+        let overlay = document.getElementById('demo-root');
+        if (!overlay) {
+            overlay = document.createElement('div');
+            overlay.id = 'demo-root';
+            document.body.appendChild(overlay);
+            renderDemo(overlay, lastHash);
+        }
     }
 };
 
@@ -54,6 +60,8 @@ function handleRoute() {
         routes['#demo'](root);
         return;
     }
+    
+    lastHash = hash || '#home';
 
     if(!hasSeeded) {
         hasSeeded = true;

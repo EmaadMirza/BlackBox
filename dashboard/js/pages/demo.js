@@ -1,6 +1,6 @@
 import { stream } from '../stream.js';
 
-export function renderDemo(container) {
+export function renderDemo(container, initialHash = '#home') {
     container.innerHTML = `
         <div style="position: fixed; top: 0; left: 0; width: 100%; height: 100%; z-index: 9999; pointer-events: none;">
             <div id="demo-overlay-card" class="card" style="position: absolute; bottom: 40px; right: 40px; width: 450px; background: rgba(10, 10, 10, 0.95); backdrop-filter: blur(10px); border: 2px solid var(--red); pointer-events: auto; box-shadow: 0 15px 40px rgba(0,0,0,0.9); padding: 2rem; border-radius: 8px;">
@@ -40,14 +40,20 @@ export function renderDemo(container) {
         { page: '#limits', caption: "We don't sell snake oil. We have honest limits. We don't prevent breaches, we make them cryptographically detectable." }
     ];
 
-    let current = 0;
+    let current = Math.max(0, steps.findIndex(s => s.page === initialHash));
     const progress = container.querySelector('#demo-progress');
     const caption = container.querySelector('#demo-caption');
+    
+    let isInternalNavigation = false;
     
     function renderStep() {
         progress.innerText = `Step ${current + 1} / ${steps.length}`;
         caption.innerText = steps[current].caption;
-        window.location.hash = steps[current].page;
+        
+        if (window.location.hash !== steps[current].page) {
+            isInternalNavigation = true;
+            window.location.hash = steps[current].page;
+        }
         
         // Trigger mock actions based on step
         if(current === 2) setTimeout(() => stream.triggerAttack('A2'), 500);
@@ -56,6 +62,29 @@ export function renderDemo(container) {
         if(current === 6) setTimeout(() => stream.triggerTamper('T1'), 500);
         if(current === 8) setTimeout(() => { const btn = document.getElementById('btn-run-verify'); if(btn) btn.click(); }, 1000);
     }
+
+    function handleHashChange() {
+        if (!document.getElementById('demo-overlay-card')) {
+            window.removeEventListener('hashchange', handleHashChange);
+            return;
+        }
+        if (isInternalNavigation) {
+            isInternalNavigation = false;
+            return;
+        }
+        
+        const newHash = window.location.hash || '#home';
+        if (newHash === '#demo') return;
+        
+        const newStepIndex = steps.findIndex(s => s.page === newHash);
+        if (newStepIndex !== -1 && newStepIndex !== current) {
+            current = newStepIndex;
+            progress.innerText = `Step ${current + 1} / ${steps.length}`;
+            caption.innerText = steps[current].caption;
+        }
+    }
+    
+    window.addEventListener('hashchange', handleHashChange);
 
     container.querySelector('#demo-next').onclick = () => {
         if(current < steps.length - 1) { current++; renderStep(); }
