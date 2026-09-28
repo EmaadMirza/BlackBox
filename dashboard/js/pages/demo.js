@@ -18,7 +18,7 @@ export function renderDemo(container, initialHash = '#home') {
                 
                 <div style="margin-top: 1.5rem; display: flex; justify-content: space-between; align-items: center;">
                     <button class="btn btn-secondary" style="font-size: 0.85rem; color: var(--grey-400); background: transparent; border: none; text-decoration: underline; padding: 0;" id="demo-close">Exit Demo</button>
-                    <button class="btn btn-secondary" style="font-size: 0.85rem; color: var(--red); background: transparent; border: none; text-decoration: underline; padding: 0;" onclick="stream.reset()">Reset Engine</button>
+                    <button class="btn btn-secondary" style="font-size: 0.85rem; color: var(--red); background: transparent; border: none; text-decoration: underline; padding: 0;" id="demo-reset">Reset Engine</button>
                 </div>
             </div>
             <div id="spotlight-overlay" style="position: absolute; top:0; left:0; width:100%; height:100%; background: rgba(0,0,0,0.5); z-index: -1; display: none;"></div>
@@ -95,7 +95,15 @@ export function renderDemo(container, initialHash = '#home') {
     };
 
     container.querySelector('#demo-close').onclick = () => {
-        container.innerHTML = ''; // Remove overlay
+        container.innerHTML = '';
+        const demoRoot = document.getElementById('demo-root');
+        if (demoRoot) demoRoot.remove();
+    };
+
+    container.querySelector('#demo-reset').onclick = () => {
+        stream.reset();
+        current = 0;
+        renderStep();
     };
 
     document.addEventListener('keydown', (e) => {

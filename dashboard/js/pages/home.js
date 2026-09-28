@@ -5,9 +5,9 @@ export function renderHome(container) {
             <div class="red-underline"></div>
             <p>Tamper-evident logging for web apps and AI agents</p>
             
-            <div style="display: flex; gap: 1rem; margin-top: 2rem;">
-                <button class="btn btn-primary" onclick="window.location.hash='#demo'">Start guided demo</button>
-                <button class="btn btn-secondary" onclick="window.location.hash='#architecture'">See the architecture</button>
+            <div style="display: flex; gap: 1.5rem; margin-top: 2.5rem; flex-wrap: wrap;">
+                <button class="btn btn-primary" style="padding: 1rem 2rem; font-size: 1.15rem;" onclick="window.location.hash='#demo'">▶ Start guided demo</button>
+                <button class="btn btn-secondary" style="padding: 1rem 2rem; font-size: 1.15rem;" onclick="window.location.hash='#architecture'">See the architecture</button>
             </div>
 
             <div class="swatch-stack-container" style="position: absolute; right: 40px; top: 40px;">

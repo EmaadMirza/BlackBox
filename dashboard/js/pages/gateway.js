@@ -46,20 +46,20 @@ export function renderGateway(container) {
             <!-- LEFT: Attack Launcher -->
             <div id="attack-launcher">
                 <h3 style="margin-bottom: 1rem;">Attack Launcher</h3>
-                <div class="card" style="display: flex; flex-direction: column; gap: 0.5rem; padding: 1.5rem;">
-                    <button class="btn btn-secondary atk-btn" data-type="A1">SQL Injection (/api/search)</button>
-                    <button class="btn btn-secondary atk-btn" data-type="A2">Path Traversal</button>
-                    <button class="btn btn-secondary atk-btn" data-type="A3">XSS</button>
-                    <button class="btn btn-secondary atk-btn" data-type="A4">Credential stuffing (/login)</button>
-                    <button class="btn btn-secondary atk-btn" data-type="A5">Replay signed request</button>
-                    <button class="btn btn-secondary atk-btn" data-type="A6">Altered body</button>
-                    <button class="btn btn-secondary atk-btn" data-type="A7">Unsigned request</button>
-                    <button class="btn btn-secondary atk-btn" data-type="A8">Probe /.env honeytoken</button>
-                    <button class="btn btn-secondary atk-btn" data-type="A9">Direct-to-origin bypass</button>
+                <div class="card" style="display: flex; flex-direction: column; gap: 0.75rem; padding: 1.5rem;">
+                    <button class="btn btn-secondary atk-btn" style="font-size: 1rem; padding: 0.7rem 1rem; text-align: left;" data-type="A1">SQL Injection (/api/search)</button>
+                    <button class="btn btn-secondary atk-btn" style="font-size: 1rem; padding: 0.7rem 1rem; text-align: left;" data-type="A2">Path Traversal</button>
+                    <button class="btn btn-secondary atk-btn" style="font-size: 1rem; padding: 0.7rem 1rem; text-align: left;" data-type="A3">XSS</button>
+                    <button class="btn btn-secondary atk-btn" style="font-size: 1rem; padding: 0.7rem 1rem; text-align: left;" data-type="A4">Credential stuffing (/login)</button>
+                    <button class="btn btn-secondary atk-btn" style="font-size: 1rem; padding: 0.7rem 1rem; text-align: left;" data-type="A5">Replay signed request</button>
+                    <button class="btn btn-secondary atk-btn" style="font-size: 1rem; padding: 0.7rem 1rem; text-align: left;" data-type="A6">Altered body</button>
+                    <button class="btn btn-secondary atk-btn" style="font-size: 1rem; padding: 0.7rem 1rem; text-align: left;" data-type="A7">Unsigned request</button>
+                    <button class="btn btn-secondary atk-btn" style="font-size: 1rem; padding: 0.7rem 1rem; text-align: left;" data-type="A8">Probe /.env honeytoken</button>
+                    <button class="btn btn-secondary atk-btn" style="font-size: 1rem; padding: 0.7rem 1rem; text-align: left;" data-type="A9">Direct-to-origin bypass</button>
                     
                     <div style="display: flex; gap: 1rem; margin-top: 1rem;">
-                        <button class="btn btn-primary" style="flex: 1;" onclick="Array.from(document.querySelectorAll('.atk-btn')).forEach((b,i)=>setTimeout(()=>b.click(), i*500))">Run all</button>
-                        <button class="btn btn-secondary" style="flex: 1;" onclick="document.dispatchEvent(new CustomEvent('bb-reset'))">Reset demo</button>
+                        <button class="btn btn-primary" style="flex: 1; font-size: 1.05rem; padding: 0.8rem;" onclick="Array.from(document.querySelectorAll('.atk-btn')).forEach((b,i)=>setTimeout(()=>b.click(), i*500))">▶ Run all</button>
+                        <button class="btn btn-secondary" style="flex: 1; font-size: 1.05rem; padding: 0.8rem;" onclick="document.dispatchEvent(new CustomEvent('bb-reset'))">↺ Reset demo</button>
                     </div>
                 </div>
             </div>
@@ -79,16 +79,16 @@ export function renderGateway(container) {
                 <h3 style="margin-bottom: 1rem;">Threat & Response</h3>
                 <div class="card" style="padding: 1.5rem;">
                     <h4 style="margin-bottom: 1rem;">Response Tiers</h4>
-                    <div style="display: flex; flex-direction: column; gap: 0.5rem;" id="tiers-list">
-                        <div style="border-left: 3px solid var(--grey-400); padding-left: 0.5rem; color: var(--grey-400);" id="tier-1">1: Alert</div>
-                        <div style="border-left: 3px solid var(--grey-400); padding-left: 0.5rem; color: var(--grey-400);" id="tier-2">2: Rate limit</div>
-                        <div style="border-left: 3px solid var(--grey-400); padding-left: 0.5rem; color: var(--grey-400);" id="tier-3">3: Block key/account (auto-expiry)</div>
-                        <div style="border-left: 3px solid var(--grey-400); padding-left: 0.5rem; color: var(--grey-400);" id="tier-4">4: Quarantine route (tamper/honeytoken)</div>
+                    <div style="display: flex; flex-direction: column; gap: 0.75rem;" id="tiers-list">
+                        <div style="border-left: 4px solid var(--grey-400); padding: 0.75rem 1rem; color: var(--grey-400); font-size: 1rem;" id="tier-1">1: Alert</div>
+                        <div style="border-left: 4px solid var(--grey-400); padding: 0.75rem 1rem; color: var(--grey-400); font-size: 1rem;" id="tier-2">2: Rate limit</div>
+                        <div style="border-left: 4px solid var(--grey-400); padding: 0.75rem 1rem; color: var(--grey-400); font-size: 1rem;" id="tier-3">3: Block key/account (auto-expiry)</div>
+                        <div style="border-left: 4px solid var(--grey-400); padding: 0.75rem 1rem; color: var(--grey-400); font-size: 1rem;" id="tier-4">4: Quarantine route (tamper/honeytoken)</div>
                     </div>
                 </div>
                 <div class="card" style="padding: 1.5rem; margin-top: 1rem;">
                     <h4 style="margin-bottom: 1rem;">Safety Rails</h4>
-                    <p style="font-size: 0.9rem;">To prevent locking out real users, bans auto-expire, respect an allowlist, and can be run in dry-run mode.</p>
+                    <p style="font-size: 1rem;">To prevent locking out real users, bans auto-expire, respect an allowlist, and can be run in dry-run mode.</p>
                 </div>
             </div>
         </div>
@@ -97,18 +97,18 @@ export function renderGateway(container) {
         <div id="compare" style="margin-top: 4rem;">
             <div class="card hero-card" style="display: flex; flex-direction: column;">
                 <h2 style="margin-bottom: 1rem;">Compare: bare app vs BlackBox</h2>
-                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem;">
-                    <div style="background: var(--bg); padding: 1.5rem; border: 1px solid var(--border); border-radius: 8px;">
-                        <h3 style="color: var(--grey-400);">Without BlackBox</h3>
-                        <div id="bare-status" style="margin-top: 1rem; color: var(--red); font-weight: 700;">EXPOSED</div>
-                        <div id="bare-data" style="margin-top: 1rem; font-family: var(--font-mono); font-size: 0.8rem; color: var(--red); display:none;">
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1.5rem;">
+                    <div style="background: var(--bg); padding: 2rem; border: 1px solid var(--border); border-radius: 8px;">
+                        <h3 style="color: var(--grey-400); font-size: 1.3rem;">Without BlackBox</h3>
+                        <div id="bare-status" style="margin-top: 1rem; color: var(--red); font-weight: 700; font-size: 1.3rem;">EXPOSED</div>
+                        <div id="bare-data" style="margin-top: 1rem; font-family: var(--font-mono); font-size: 1rem; color: var(--red); display:none;">
                             [LEAKED DATA] id:1, hash:8x9a...
                         </div>
                     </div>
-                    <div style="background: var(--bg); padding: 1.5rem; border: 1px solid var(--red); border-radius: 8px; box-shadow: inset 0 0 20px rgba(228,0,43,0.1);">
-                        <h3 style="color: var(--white);">With BlackBox</h3>
-                        <div id="bb-status" style="margin-top: 1rem; color: var(--white); font-weight: 700;">PROTECTED</div>
-                        <div id="bb-rule" style="margin-top: 1rem; font-family: var(--font-mono); font-size: 0.8rem; color: var(--grey-400);">
+                    <div style="background: var(--bg); padding: 2rem; border: 1px solid var(--red); border-radius: 8px; box-shadow: inset 0 0 20px rgba(228,0,43,0.1);">
+                        <h3 style="color: var(--white); font-size: 1.3rem;">With BlackBox</h3>
+                        <div id="bb-status" style="margin-top: 1rem; color: var(--white); font-weight: 700; font-size: 1.3rem;">PROTECTED</div>
+                        <div id="bb-rule" style="margin-top: 1rem; font-family: var(--font-mono); font-size: 1rem; color: var(--grey-400);">
                             Awaiting attack...
                         </div>
                     </div>
@@ -193,9 +193,9 @@ export function renderGateway(container) {
             `;
             
             div.innerHTML = `
-                <div style="font-family: var(--font-mono); font-size: 0.85rem;">${evt.payload.method} ${evt.payload.path}</div>
+                <div style="font-family: var(--font-mono); font-size: 1rem;">${evt.payload.method} ${evt.payload.path}</div>
                 <div style="display:flex; gap: 1rem; align-items:center;">
-                    <span class="badge ${isBlocked ? 'badge-tampered' : 'badge-verified'}">${evt.payload.status}</span>
+                    <span class="badge ${isBlocked ? 'badge-tampered' : 'badge-verified'}" style="font-size: 0.95rem; padding: 0.3rem 0.8rem;">${evt.payload.status}</span>
                 </div>
             `;
             

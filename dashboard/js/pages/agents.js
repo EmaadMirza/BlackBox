@@ -16,24 +16,24 @@ export function renderAgents(container) {
         </div>
 
         <!-- Animated Explainer -->
-        <div class="card hero-card" style="display: flex; align-items: center; justify-content: space-around; padding: 3rem;">
+        <div class="card hero-card" style="display: flex; align-items: center; justify-content: space-around; padding: 3rem; flex-wrap: wrap; gap: 1rem;">
             <div style="text-align: center;">
-                <div style="font-size: 2rem; color: var(--grey-400);">🤖</div>
-                <div>AI Agent</div>
-                <div style="font-size: 0.8rem; color: var(--grey-400);">(Empty hand)</div>
+                <div style="font-size: 2.5rem; color: var(--grey-400);">🤖</div>
+                <div style="font-size: 1.1rem; font-weight: 600;">AI Agent</div>
+                <div style="font-size: 0.95rem; color: var(--grey-400);">(Empty hand)</div>
             </div>
-            <div style="text-align: center; color: var(--red);">→ asks →</div>
-            <div style="text-align: center; border: 1px solid var(--border); padding: 1rem; border-radius: 8px;">
-                <div style="font-size: 2rem;">🛡️🔑</div>
-                <div>Chaperone</div>
+            <div style="text-align: center; color: var(--red); font-size: 1.2rem; font-weight: 700;">→ asks →</div>
+            <div style="text-align: center; border: 1px solid var(--border); padding: 1.5rem; border-radius: 8px;">
+                <div style="font-size: 2.5rem;">🛡️🔑</div>
+                <div style="font-size: 1.1rem; font-weight: 600;">Chaperone</div>
             </div>
-            <div style="text-align: center; color: var(--white);">→ executes →</div>
+            <div style="text-align: center; color: var(--white); font-size: 1.2rem; font-weight: 700;">→ executes →</div>
             <div style="text-align: center;">
-                <div style="font-size: 2rem;">🏦</div>
-                <div>Provider</div>
+                <div style="font-size: 2.5rem;">🏦</div>
+                <div style="font-size: 1.1rem; font-weight: 600;">Provider</div>
             </div>
         </div>
-        <p style="text-align: center; color: var(--text-2); margin-top: -1rem; margin-bottom: 3rem;">The agent never carries a key. It asks. The chaperone writes it down first.</p>
+        <p style="text-align: center; color: var(--text-2); margin-top: -1rem; margin-bottom: 3rem; font-size: 1.1rem;">The agent never carries a key. It asks. The chaperone writes it down first.</p>
 
         <!-- Actions & Queue -->
         <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 2rem;">
@@ -41,19 +41,19 @@ export function renderAgents(container) {
             <div>
                 <h3 style="margin-bottom: 1rem;">Run Agent Scenarios</h3>
                 <div class="card" style="display: flex; flex-direction: column; gap: 1rem;">
-                    <button class="btn btn-secondary" onclick="document.dispatchEvent(new CustomEvent('agt-normal'))">Run normal action</button>
-                    <button class="btn btn-primary" onclick="document.dispatchEvent(new CustomEvent('agt-poison'))">Run poisoned invoice attack (A11)</button>
-                    <button class="btn btn-secondary" onclick="document.dispatchEvent(new CustomEvent('agt-bypass'))">Agent calls provider directly (A12)</button>
-                    <button class="btn btn-secondary" onclick="document.dispatchEvent(new CustomEvent('agt-tool'))">Tool definition change (A13)</button>
+                    <button class="btn btn-secondary" style="font-size: 1rem; padding: 0.8rem 1rem; text-align: left;" onclick="document.dispatchEvent(new CustomEvent('agt-normal'))">Run normal action</button>
+                    <button class="btn btn-primary" style="font-size: 1rem; padding: 0.8rem 1rem; text-align: left;" onclick="document.dispatchEvent(new CustomEvent('agt-poison'))">⚠ Run poisoned invoice attack (A11)</button>
+                    <button class="btn btn-secondary" style="font-size: 1rem; padding: 0.8rem 1rem; text-align: left;" onclick="document.dispatchEvent(new CustomEvent('agt-bypass'))">Agent calls provider directly (A12)</button>
+                    <button class="btn btn-secondary" style="font-size: 1rem; padding: 0.8rem 1rem; text-align: left;" onclick="document.dispatchEvent(new CustomEvent('agt-tool'))">Tool definition change (A13)</button>
                 </div>
             </div>
 
             <div>
                 <h3 style="margin-bottom: 1rem;">Approval Queue</h3>
                 <div class="card" id="approval-queue" style="min-height: 200px;">
-                    <div style="color: var(--grey-400); text-align: center; margin-top: 2rem;">No pending approvals</div>
+                    <div style="color: var(--grey-400); text-align: center; margin-top: 2rem; font-size: 1.05rem;">No pending approvals</div>
                 </div>
-                <div style="font-size: 0.8rem; color: var(--grey-400); text-align: center; margin-top: 0.5rem;">Automatic tiers run inside safety rails; high-impact actions wait for a human.</div>
+                <div style="font-size: 0.95rem; color: var(--grey-400); text-align: center; margin-top: 0.5rem;">Automatic tiers run inside safety rails; high-impact actions wait for a human.</div>
             </div>
         </div>
 
@@ -77,7 +77,7 @@ export function renderAgents(container) {
                     <!-- Filled dynamically -->
                 </div>
                 <div style="padding: 1rem; text-align: center; border-top: 1px solid var(--border);">
-                    <button class="btn btn-secondary" onclick="document.dispatchEvent(new CustomEvent('agt-delete-log'))">Simulate deleted log entry</button>
+                    <button class="btn btn-secondary" style="font-size: 1rem; padding: 0.7rem 1.5rem;" onclick="document.dispatchEvent(new CustomEvent('agt-delete-log'))">Simulate deleted log entry</button>
                 </div>
             </div>
         </div>
@@ -107,9 +107,9 @@ export function renderAgents(container) {
             div.style.cssText = 'padding: 1rem; border-left: 2px solid var(--grey-400); margin-left: 1rem; margin-bottom: 1rem; position: relative;';
             div.innerHTML = `
                 <div style="position: absolute; left: -9px; top: 15px; width: 16px; height: 16px; border-radius: 50%; background: var(--surface-2); border: 2px solid var(--grey-400);"></div>
-                <div style="font-family: var(--font-mono); font-size: 0.8rem; color: var(--grey-400);">INTENT ${evt.ts.split('T')[1]}</div>
-                <div><strong>Tool:</strong> ${evt.payload.tool}</div>
-                <div style="margin-top: 0.5rem;"><span class="badge badge-unverified">Policy: ${evt.payload.status}</span></div>
+                <div style="font-family: var(--font-mono); font-size: 0.95rem; color: var(--grey-400);">INTENT ${evt.ts.split('T')[1]}</div>
+                <div style="font-size: 1.05rem;"><strong>Tool:</strong> ${evt.payload.tool}</div>
+                <div style="margin-top: 0.5rem;"><span class="badge badge-unverified" style="font-size: 0.95rem;">Policy: ${evt.payload.status}</span></div>
             `;
             timeline.prepend(div);
 
