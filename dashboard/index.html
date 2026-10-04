@@ -1,15 +1,19 @@
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>BlackBox Prototype</title>
-    <link rel="stylesheet" href="css/tokens.css">
-    <link rel="stylesheet" href="css/base.css">
-    <link rel="stylesheet" href="css/components.css">
-    <link rel="stylesheet" href="css/pages.css">
+    <link rel="stylesheet" href="css/tokens.css?v=13">
+    <link rel="stylesheet" href="css/base.css?v=13">
+    <link rel="stylesheet" href="css/components.css?v=13">
+    <link rel="stylesheet" href="css/pages.css?v=13">
 </head>
+
 <body>
+    <canvas id="global-bg" style="position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; z-index: -1; pointer-events: none; background: #0A0A0B;"></canvas>
+    
     <div id="drawer" class="drawer">
         <nav class="sidebar-nav">
             <a href="#home">Home</a>
@@ -27,18 +31,22 @@
 
     <div class="layout">
         <header class="topbar">
-            <div class="logo">
-                <span class="logo-dot"></span>
-                BlackBox
+            <div style="display: flex; align-items: center; gap: 1rem;">
+                <button class="menu-btn" id="menu-btn">☰</button>
+                <a href="#home" class="logo" style="text-decoration: none; color: inherit;">
+                    <div class="logo-cube">
+                        <div class="face front"></div>
+                        <div class="face back"></div>
+                        <div class="face right"></div>
+                        <div class="face left"></div>
+                        <div class="face top"></div>
+                        <div class="face bottom"></div>
+                    </div>
+                    BlackBox
+                </a>
             </div>
-            <div class="status-pill" id="global-status">
-                Protected
-            </div>
-            <div class="mode-toggle">
-                <span id="mode-label">Demo Mode</span>
-            </div>
-            <button class="menu-btn" style="display:inline-block; margin-right: 1rem; font-size:1rem;" onclick="document.body.classList.toggle('presentation-mode')">📺</button>
-            <button class="menu-btn" id="menu-btn">☰</button>
+
+
         </header>
 
         <aside class="sidebar-desktop">
@@ -56,11 +64,15 @@
             </nav>
         </aside>
 
-        <main id="app-root" class="main-content">
-            <!-- Content injected here by app.js -->
-        </main>
+        <div class="main-wrapper">
+            <main id="app-root" class="main-content">
+                <!-- Content injected here by app.js -->
+            </main>
+        </div>
     </div>
 
-    <script type="module" src="js/app.js?v=2"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script type="module" src="js/app.js?v=16"></script>
 </body>
+
 </html>

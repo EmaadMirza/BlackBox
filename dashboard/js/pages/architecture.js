@@ -117,4 +117,24 @@ export function renderArchitecture(container) {
     container.querySelector('#btn-flow2').onclick = () => { currentFlow = flows.flow2; step = 0; playStep(); };
     container.querySelector('#btn-flow3').onclick = () => { currentFlow = flows.flow3; step = 0; playStep(); };
     container.querySelector('#btn-next').onclick = () => { step++; playStep(); };
+    
+    container.querySelector('#btn-pause').onclick = () => {
+        const btn = container.querySelector('#btn-pause');
+        if (btn.innerText === 'Pause') {
+            btn.innerText = 'Resume';
+        } else {
+            btn.innerText = 'Pause';
+        }
+    };
+
+    container.querySelector('#btn-zones').onclick = () => {
+        captionBar.style.display = 'flex';
+        captionText.innerHTML = '<span style="color:var(--red);">Attackable:</span> Gateway, Ledger &nbsp;|&nbsp; <span style="color:var(--white);">Trusted:</span> Witness, Root Key Vault';
+    };
+
+    container.querySelector('#btn-all').onclick = () => {
+        currentFlow = [...flows.flow1, '---', ...flows.flow2, '---', ...flows.flow3];
+        step = 0;
+        playStep();
+    };
 }

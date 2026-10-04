@@ -83,10 +83,28 @@ export function renderAgents(container) {
         </div>
     `;
 
-    document.addEventListener('agt-normal', () => stream.triggerAgentAction('NORMAL'));
-    document.addEventListener('agt-poison', () => stream.triggerAgentAction('A11'));
-    document.addEventListener('agt-bypass', () => stream.triggerAgentAction('A12'));
-    document.addEventListener('agt-tool', () => stream.triggerAgentAction('A13'));
+    // Use named handlers to prevent listener stacking on repeat visits
+    const agtNormal = () => { if(container.querySelector('#agent-timeline')) stream.triggerAgentAction('NORMAL'); };
+    const agtPoison = () => { if(container.querySelector('#agent-timeline')) stream.triggerAgentAction('A11'); };
+    const agtBypass = () => { if(container.querySelector('#agent-timeline')) stream.triggerAgentAction('A12'); };
+    const agtTool   = () => { if(container.querySelector('#agent-timeline')) stream.triggerAgentAction('A13'); };
+    
+    // Remove previous listeners (safe even if none exist)
+    document.removeEventListener('agt-normal', window.__agtNormal);
+    document.removeEventListener('agt-poison', window.__agtPoison);
+    document.removeEventListener('agt-bypass', window.__agtBypass);
+    document.removeEventListener('agt-tool',   window.__agtTool);
+    
+    // Store references globally so they can be cleaned up next time
+    window.__agtNormal = agtNormal;
+    window.__agtPoison = agtPoison;
+    window.__agtBypass = agtBypass;
+    window.__agtTool   = agtTool;
+    
+    document.addEventListener('agt-normal', agtNormal);
+    document.addEventListener('agt-poison', agtPoison);
+    document.addEventListener('agt-bypass', agtBypass);
+    document.addEventListener('agt-tool',   agtTool);
 
     const timeline = container.querySelector('#agent-timeline');
     const reconList = container.querySelector('#recon-list');
@@ -167,7 +185,9 @@ export function renderAgents(container) {
 
     stream.subscribe(handleEvent);
 
-    document.addEventListener('agt-delete-log', () => {
+    document.removeEventListener('agt-delete-log', window.__agtDeleteLog);
+    const deleteLogHandler = () => {
+        if (!container.querySelector('#recon-list')) return;
         const rDiv = document.createElement('div');
         rDiv.style.cssText = 'display: grid; grid-template-columns: 1fr 1fr; border-bottom: 1px solid var(--border); align-items: center; background: rgba(228,0,43,0.1);';
         rDiv.innerHTML = `
@@ -177,5 +197,7 @@ export function renderAgents(container) {
             </div>
         `;
         reconList.prepend(rDiv);
-    });
+    };
+    window.__agtDeleteLog = deleteLogHandler;
+    document.addEventListener('agt-delete-log', deleteLogHandler);
 }

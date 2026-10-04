@@ -5,7 +5,7 @@
 }
 
 body {
-    background-color: var(--bg);
+    background-color: transparent;
     color: var(--white);
     font-family: var(--font-body);
     font-weight: 300;
@@ -81,13 +81,27 @@ a {
     font-size: 1.2rem;
 }
 
-.logo-dot {
-    width: 12px;
-    height: 12px;
-    background-color: var(--red);
-    border-radius: 50%;
-    margin-right: 8px;
+.logo-cube {
+    width: 16px;
+    height: 16px;
+    position: relative;
+    transform-style: preserve-3d;
+    margin-right: 12px;
 }
+.logo-cube .face {
+    position: absolute;
+    width: 16px;
+    height: 16px;
+    background: #0A0A0B;
+    border: 1px solid var(--red);
+    opacity: 0.9;
+}
+.logo-cube .front  { transform: rotateY(  0deg) translateZ(8px); }
+.logo-cube .back   { transform: rotateY(180deg) translateZ(8px); }
+.logo-cube .right  { transform: rotateY( 90deg) translateZ(8px); }
+.logo-cube .left   { transform: rotateY(-90deg) translateZ(8px); }
+.logo-cube .top    { transform: rotateX( 90deg) translateZ(8px); }
+.logo-cube .bottom { transform: rotateX(-90deg) translateZ(8px); }
 
 .status-pill {
     font-size: 0.9rem;
@@ -126,19 +140,40 @@ a {
         width: 100%;
     }
     .menu-btn {
-        display: none;
+        display: block; /* Ensure it stays visible to trigger hover */
     }
     .sidebar-desktop {
         display: block;
+        position: fixed;
+        top: 60px;
+        left: -250px;
         width: 250px;
+        height: calc(100vh - 60px);
+        background-color: var(--bg);
         border-right: 1px solid var(--border);
         padding: 2rem 1rem;
-        height: calc(100vh - 60px);
-        position: sticky;
-        top: 60px;
+        z-index: 90;
+        transition: left 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275);
     }
+    
+    body.sidebar-hovered .sidebar-desktop,
+    body.sidebar-pinned .sidebar-desktop {
+        left: 0;
+    }
+
+    .main-wrapper {
+        width: 100%;
+        transition: padding-left 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+    }
+    
+    body.sidebar-pinned .main-wrapper {
+        padding-left: 250px;
+    }
+
     .main-content {
-        width: calc(100% - 250px);
+        width: 100%;
+        margin-left: auto;
+        margin-right: auto;
         padding: 3rem 4rem;
     }
 }

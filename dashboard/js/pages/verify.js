@@ -99,9 +99,8 @@ export function renderVerify(container) {
         container.querySelector('#ai-summary').style.display = 'none';
         container.querySelector('#heat-bad').style.background = 'var(--white)';
 
-        // Are we coming from a tamper? Check URL or local state if possible. For demo, randomize or assume tampered if coming from tamper page quickly.
-        // Let's just do a 50/50 for the demo unless we can read state. Since they click "Judge tamper", we'll simulate a failure.
-        const isTampered = true; // Hardcoded to show the cool failure UI for the judge flow
+        // Detect if a tamper was triggered from the Tamper Lab page
+        const isTampered = window.__blackbox_tampered === true;
 
         let current = 1;
         const interval = setInterval(() => {

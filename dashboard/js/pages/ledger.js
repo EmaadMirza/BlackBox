@@ -177,7 +177,9 @@ export function renderLedger(container) {
     let seq = 1000;
     
     // Add blocks dynamically
-    setInterval(() => {
+    const chainInterval = setInterval(() => {
+        const chainEl = container.querySelector('#chain-container');
+        if (!chainEl) { clearInterval(chainInterval); return; }
         seq++;
         const block = document.createElement('div');
         block.style.cssText = 'display: inline-block; width: 100px; margin-right: 1rem; cursor: pointer; vertical-align: top; text-align: center;';
@@ -211,12 +213,13 @@ export function renderLedger(container) {
             drawer.classList.add('open');
         };
 
-        chainContainer.appendChild(block);
-        chainContainer.scrollLeft = chainContainer.scrollWidth;
+        chainEl.appendChild(block);
+        chainEl.scrollLeft = chainEl.scrollWidth;
 
         // Animate Checkpoint every 5 entries
         if(seq % 5 === 0) {
             const dot = container.querySelector('#chk-dot');
+            if (!dot) return;
             dot.style.opacity = '1';
             dot.style.transition = 'left 1s linear';
             dot.style.left = '100%';
@@ -241,16 +244,16 @@ export function renderLedger(container) {
 
     // Heartbeat Animation
     let xOffset = 0;
-    setInterval(() => {
+    const ecgInterval = setInterval(() => {
+        const ecgPath = container.querySelector('#ecg-path');
+        if (!ecgPath) { clearInterval(ecgInterval); return; }
         xOffset += 5;
         if(xOffset > 100) xOffset = 0;
-        const d = `M 0 50 L ${20 - xOffset} 50 L ${30 - xOffset} 20 L ${40 - xOffset} 80 L ${50 - xOffset} 50 L 1000 50`;
-        // Hacky repeating pattern for ECG
         let pathStr = "M 0 50 ";
         for(let i=0; i<1000; i+=200) {
             pathStr += `L ${i+100} 50 L ${i+110} 20 L ${i+120} 80 L ${i+130} 50 `;
         }
         pathStr += "L 1000 50";
-        container.querySelector('#ecg-path').setAttribute('d', pathStr);
+        ecgPath.setAttribute('d', pathStr);
     }, 100);
 }

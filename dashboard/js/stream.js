@@ -25,6 +25,10 @@ class StreamManager {
         this.listeners.push(callback);
     }
 
+    unsubscribe(callback) {
+        this.listeners = this.listeners.filter(cb => cb !== callback);
+    }
+
     notify(event) {
         this.listeners.forEach(cb => cb(event));
     }

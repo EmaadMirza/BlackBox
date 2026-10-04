@@ -155,9 +155,11 @@ export function renderGateway(container) {
         });
     });
 
-    document.addEventListener('bb-reset', () => {
+    const resetHandler = () => {
         bareHits = 0;
-        container.querySelector('#comp-bare').innerText = 0;
+        const compBare = container.querySelector('#comp-bare');
+        if (!compBare) return; // Page already navigated away
+        compBare.innerText = 0;
         container.querySelector('#bare-data').style.display = 'none';
         container.querySelector('#bb-rule').innerText = "Awaiting attack...";
         feedList.innerHTML = '<div style="color: var(--grey-400); text-align: center; margin-top: 2rem;">Waiting for traffic...</div>';
@@ -169,8 +171,13 @@ export function renderGateway(container) {
                 el.style.color = 'var(--grey-400)';
             }
         });
+        
+        // Clear global tamper flag
+        window.__blackbox_tampered = false;
+        
         stream.reset();
-    });
+    };
+    document.addEventListener('bb-reset', resetHandler);
 
     const handleEvent = (evt) => {
         if (evt.type === 'request') {

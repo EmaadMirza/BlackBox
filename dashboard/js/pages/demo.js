@@ -116,13 +116,18 @@ export function renderDemo(container, initialHash = '#home') {
     const card = container.querySelector('#demo-overlay-card');
     const header = card.firstElementChild;
     header.style.cursor = 'grab';
+    header.style.userSelect = 'none';
     
     let isDragging = false;
     let startX, startY, initialX = 0, initialY = 0;
 
     header.addEventListener('mousedown', (e) => {
+        e.preventDefault(); // ABSOLUTE BULLETPROOF WAY to stop text selection natively
         isDragging = true;
         header.style.cursor = 'grabbing';
+        card.style.transition = 'none'; // REMOVE CSS friction/lag during drag
+        document.body.style.userSelect = 'none'; // Stop global text selection
+        document.body.style.webkitUserSelect = 'none'; 
         startX = e.clientX;
         startY = e.clientY;
         if (card.dataset.x) initialX = parseFloat(card.dataset.x);
@@ -131,7 +136,6 @@ export function renderDemo(container, initialHash = '#home') {
 
     document.addEventListener('mousemove', (e) => {
         if (!isDragging) return;
-        e.preventDefault(); // Prevent text selection while dragging
         const dx = e.clientX - startX;
         const dy = e.clientY - startY;
         const newX = initialX + dx;
@@ -142,8 +146,13 @@ export function renderDemo(container, initialHash = '#home') {
     });
 
     document.addEventListener('mouseup', () => {
-        isDragging = false;
-        header.style.cursor = 'grab';
+        if (isDragging) {
+            isDragging = false;
+            header.style.cursor = 'grab';
+            card.style.transition = ''; // Restore transition
+            document.body.style.userSelect = ''; // Restore text selection
+            document.body.style.webkitUserSelect = ''; 
+        }
     });
 
     renderStep();

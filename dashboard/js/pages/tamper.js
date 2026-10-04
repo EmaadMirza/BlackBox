@@ -146,11 +146,19 @@ export function renderTamper(container) {
             const id = e.target.getAttribute('data-id');
             stream.triggerTamper(id);
             
+            // Set global tamper flag for the Verify page to detect
+            window.__blackbox_tampered = true;
+            
             const bbEdit = container.querySelector('#bb-edit');
             const plainEdit = container.querySelector('#plain-edit');
             const bbDel = container.querySelector('#bb-del');
             const plainDel = container.querySelector('#plain-del');
             const bbBrk = container.querySelector('#bb-brk');
+
+            // Visual feedback on the clicked button
+            e.target.style.borderColor = 'var(--red)';
+            e.target.style.color = 'var(--red)';
+            e.target.innerText = '✓ ' + e.target.innerText.replace('✓ ', '');
 
             if(id === 'T1') {
                 plainEdit.style.color = 'var(--white)';
@@ -170,6 +178,45 @@ export function renderTamper(container) {
                 bbBrk.style.color = 'var(--red)';
                 bbBrk.innerText = '✖ CHAIN BREAK ✖';
             }
+            else if(id === 'T3') {
+                bbBrk.style.color = 'var(--red)';
+                bbBrk.innerText = '✖ CHECKPOINT SIZE MISMATCH ✖';
+            }
+            else if(id === 'T4') {
+                bbEdit.style.background = 'rgba(228,0,43,0.1)';
+                bbEdit.style.border = '1px solid var(--red)';
+                bbEdit.innerHTML = `<span style="font-family: var(--font-mono); font-size: 0.8rem; color:var(--red);">Seq 1002: SWAPPED</span><span class="badge badge-tampered">CHAIN_BREAK</span>`;
+                bbBrk.style.color = 'var(--red)';
+                bbBrk.innerText = '✖ AAD BREAK ✖';
+            }
+            else if(id === 'T5') {
+                bbBrk.style.color = 'var(--red)';
+                bbBrk.innerText = '✖ FORGED ENTRY DETECTED ✖';
+            }
+            else if(id === 'T6') {
+                bbBrk.style.color = 'var(--red)';
+                bbBrk.innerText = '✖ CONSISTENCY_FAILURE ✖';
+            }
+            else if(id === 'T7') {
+                bbBrk.style.color = 'var(--red)';
+                bbBrk.innerText = '✖ TREE SIZE MISMATCH ✖';
+            }
+            else if(id === 'T8') {
+                bbBrk.style.color = 'var(--red)';
+                bbBrk.innerText = '✖ HEARTBEAT_GAP ✖';
+            }
+            else if(id === 'T9') {
+                bbBrk.style.color = 'var(--red)';
+                bbBrk.innerText = '✖ REJECTED (NOT AN EXTENSION) ✖';
+            }
+            else if(id === 'T10') {
+                bbBrk.style.color = 'var(--red)';
+                bbBrk.innerText = '✖ OLDER KEYS DELETED ✖';
+            }
+            else if(id === 'T11') {
+                bbBrk.style.color = 'var(--red)';
+                bbBrk.innerText = '✖ DETECTED VIA RECONCILIATION ✖';
+            }
         };
     });
 
@@ -178,6 +225,9 @@ export function renderTamper(container) {
         const plainEdit = container.querySelector('#plain-edit');
         const bbEdit = container.querySelector('#bb-edit');
         const bbBrk = container.querySelector('#bb-brk');
+        
+        // Set global tamper flag for the Verify page
+        window.__blackbox_tampered = true;
         
         plainEdit.innerText = `[ID: 1002] ${val}`;
         
