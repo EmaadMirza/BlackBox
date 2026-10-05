@@ -15,7 +15,7 @@ export function renderArchitecture(container) {
         <div class="accordion">
             <div class="accordion-header" onclick="this.parentElement.classList.toggle('open')">
                 Table of Contents
-                <span class="accordion-chevron">▼</span>
+                <span class="accordion-chevron">&#9660;</span>
             </div>
             <div class="accordion-content">
                 <ul>
@@ -28,7 +28,7 @@ export function renderArchitecture(container) {
         <div class="accordion">
             <div class="accordion-header" onclick="this.parentElement.classList.toggle('open')">
                 What am I looking at?
-                <span class="accordion-chevron">▼</span>
+                <span class="accordion-chevron">&#9660;</span>
             </div>
             <div class="accordion-content">
                 <p id="plain-words-desc">Think of your web app as a building. The Gateway is the guard at the door and the chaperone for AI helpers. The Ledger is an unalterable diary recording every action. The Witness is the notary stamping the diary so it can't be modified later.</p>
@@ -58,7 +58,7 @@ export function renderArchitecture(container) {
         </div>
 
         <div id="diagram" style="width: 100%; overflow-x: auto; background: var(--bg); border-radius: 12px; border: 1px solid var(--border);">
-            <object id="svg-object" type="image/svg+xml" data="../docs/architecture.svg" style="width: 100%; min-width: 800px; height: auto;"></object>
+            <object id="svg-object" type="image/svg+xml" data="assets/architecture.svg" style="width: 100%; min-width: 800px; height: auto;"></object>
         </div>
 
         <div id="component-drawer" class="drawer">
@@ -94,6 +94,30 @@ export function renderArchitecture(container) {
 
     const captionBar = container.querySelector('#caption-bar');
     const captionText = container.querySelector('#caption-text');
+
+    
+    const svgObject = container.querySelector('#svg-object');
+    svgObject.addEventListener('load', () => {
+        try {
+            const svgDoc = svgObject.contentDocument;
+            if (svgDoc) {
+                const groups = svgDoc.querySelectorAll('g');
+                groups.forEach(g => {
+                    g.style.cursor = 'pointer';
+                    g.addEventListener('click', () => {
+                        const titleEl = g.querySelector('.text-title');
+                        if (titleEl) {
+                            container.querySelector('#comp-title').innerText = titleEl.textContent;
+                            container.querySelector('#comp-job').innerText = 'Detailed logic for ' + titleEl.textContent;
+                            container.querySelector('#comp-trust').innerText = 'Depends on zone';
+                            container.querySelector('#comp-atk').innerText = 'Varies';
+                            container.querySelector('#component-drawer').classList.add('open');
+                        }
+                    });
+                });
+            }
+        } catch(e) {}
+    });
 
     const flows = {
         flow1: ["Client signs request", "Gateway validates signature", "Intent sealed to Ledger", "Gateway forwards to Origin", "Outcome sealed to Ledger", "Ledger Checkpoint witnessed"],
