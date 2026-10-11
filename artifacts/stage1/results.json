@@ -1,0 +1,96 @@
+{
+  "honest": "VERIFIED",
+  "variants": [
+    {
+      "variant": "edit_and_rehash",
+      "verdict": "TAMPERED",
+      "affected_sequences": [
+        0,
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7,
+        8,
+        9
+      ]
+    },
+    {
+      "variant": "delete_seq_7",
+      "verdict": "MISSING",
+      "affected_sequences": [
+        7
+      ]
+    },
+    {
+      "variant": "reorder",
+      "verdict": "TAMPERED",
+      "affected_sequences": [
+        0,
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7,
+        8,
+        9
+      ]
+    },
+    {
+      "variant": "duplicate",
+      "verdict": "TAMPERED",
+      "affected_sequences": [
+        5
+      ]
+    },
+    {
+      "variant": "truncate",
+      "verdict": "MISSING",
+      "affected_sequences": [
+        8,
+        9
+      ]
+    },
+    {
+      "variant": "swap_epoch_certificates",
+      "verdict": "TAMPERED",
+      "affected_sequences": [
+        0,
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7,
+        8,
+        9
+      ]
+    },
+    {
+      "variant": "swap_signatures",
+      "verdict": "TAMPERED",
+      "affected_sequences": [
+        0,
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7,
+        8,
+        9
+      ]
+    }
+  ],
+  "control": {
+    "plain_hash_chain": "ACCEPTED",
+    "signed_log_seq_5": "TAMPERED",
+    "reason": "entry signature failure"
+  }
+}

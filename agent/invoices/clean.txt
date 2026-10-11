@@ -1,0 +1,4 @@
+SYNTHETIC TEST FIXTURE — Invoice INV-001
+Customer: customer-test
+Amount: 2500 minor units
+Requested action: read invoice status.

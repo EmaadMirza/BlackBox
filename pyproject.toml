@@ -1,0 +1,41 @@
+[build-system]
+requires = ["setuptools>=75"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "blackbox-v4"
+version = "0.1.0"
+description = "BlackBox v4 Stage 1: offline tamper-evident log and verifier"
+requires-python = ">=3.11"
+dependencies = [
+  "pydantic>=2.10,<3",
+  "cryptography>=44,<50",
+  "rfc8785>=0.1.4,<1",
+]
+
+[project.optional-dependencies]
+services = [
+  "fastapi>=0.115,<1", "uvicorn>=0.34,<1", "httpx>=0.28,<1",
+  "sqlalchemy>=2.0,<3", "asyncpg>=0.30,<1", "redis>=5,<8", "pyyaml>=6,<7",
+]
+dev = ["pytest>=8,<10", "hypothesis>=6,<7", "ruff>=0.11,<1", "locust>=2,<3"]
+
+[project.scripts]
+blackbox = "tools.cli:main"
+blackbox-ceremony = "tools.ceremony:main"
+blackbox-bench = "bench.locustfile:main"
+
+[tool.setuptools.packages.find]
+include = ["libs*", "services*", "tools*", "agent*", "baseline*", "bench*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-ra"
+xfail_strict = true
+
+[tool.ruff]
+target-version = "py311"
+line-length = 100
+
+[tool.ruff.lint]
+select = ["E4", "E7", "E9", "F", "I"]

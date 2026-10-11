@@ -1,0 +1,26 @@
+name: blackbox-checks
+on: [push, pull_request]
+permissions:
+  contents: read
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: ['3.11', '3.12', '3.13']
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+      - uses: astral-sh/setup-uv@v6
+      - run: uv sync --frozen --extra services --extra dev
+      - run: uv run --frozen ruff check .
+      - run: uv run --frozen ruff format --check .
+      - run: uv run --frozen python -c "import libs.blackbox_core"
+      - run: uv run --frozen pytest -q tests/unit tests/property tests/gates tests/acceptance
+      - run: docker compose config --quiet
+      - run: docker compose -f docker-compose.provider.yml config --quiet
+      - run: docker compose -f deploy/witness-host/docker-compose.yml config --quiet
+      - run: uv run --frozen python -m tools.attack_suite.tamper_battery
+      # G1/G2 are real tests; G3/G4 and service acceptance remain expected failures.

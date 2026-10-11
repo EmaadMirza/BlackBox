@@ -1,0 +1,21 @@
+Metadata-Version: 2.4
+Name: blackbox-v4
+Version: 0.1.0
+Summary: BlackBox v4 Stage 1: offline tamper-evident log and verifier
+Requires-Python: >=3.11
+Requires-Dist: pydantic<3,>=2.10
+Requires-Dist: cryptography<50,>=44
+Requires-Dist: rfc8785<1,>=0.1.4
+Provides-Extra: services
+Requires-Dist: fastapi<1,>=0.115; extra == "services"
+Requires-Dist: uvicorn<1,>=0.34; extra == "services"
+Requires-Dist: httpx<1,>=0.28; extra == "services"
+Requires-Dist: sqlalchemy<3,>=2.0; extra == "services"
+Requires-Dist: asyncpg<1,>=0.30; extra == "services"
+Requires-Dist: redis<8,>=5; extra == "services"
+Requires-Dist: pyyaml<7,>=6; extra == "services"
+Provides-Extra: dev
+Requires-Dist: pytest<10,>=8; extra == "dev"
+Requires-Dist: hypothesis<7,>=6; extra == "dev"
+Requires-Dist: ruff<1,>=0.11; extra == "dev"
+Requires-Dist: locust<3,>=2; extra == "dev"

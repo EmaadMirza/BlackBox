@@ -1,0 +1,25 @@
+name: blackbox-witness
+# Deploy separately on each independent host. TLS provisioning remains TODO §11.2.
+services:
+  witness:
+    build: {context: ../.., dockerfile: services/witness/Dockerfile}
+    init: true
+    read_only: true
+    tmpfs: [/tmp]
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    environment:
+      WITNESS_ID: ${WITNESS_ID:-witness-remote-1}
+      LEDGER_URL: ${LEDGER_PUBLIC_URL:-https://REPLACE_WITH_LEDGER_READ_API}
+    ports: ["127.0.0.1:8100:8000"]
+    volumes: [witness_data:/var/lib/blackbox/witness, "./keys:/run/blackbox/witness-keys:ro"]
+    networks: [witness_transport]
+    healthcheck:
+      test: [CMD, /app/.venv/bin/python, -c, "import httpx; httpx.get('http://127.0.0.1:8000/health', timeout=2).raise_for_status()"]
+      interval: 10s
+      timeout: 3s
+      retries: 3
+networks:
+  witness_transport: {}
+volumes:
+  witness_data: {}

@@ -1,0 +1,8 @@
+{
+  "root_public_key": "REPLACE_WITH_OUT_OF_BAND_PINNED_PUBLIC_KEY",
+  "witness_public_keys": {
+    "witness-1": "REPLACE_WITH_WITNESS_1_PUBLIC_KEY",
+    "witness-2": "REPLACE_WITH_WITNESS_2_PUBLIC_KEY",
+    "witness-3": "REPLACE_WITH_WITNESS_3_PUBLIC_KEY"
+  }
+}

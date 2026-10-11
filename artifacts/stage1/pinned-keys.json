@@ -1,0 +1,12 @@
+{
+  "log_id": "sha256:f53e452fdabb8929cdecb8219eaadf5850a45bec41b4c5d449068da4b4494473",
+  "log_name": "stage1-demo",
+  "root_public_key": "aRXZaEl4-xxDWC_quKXIjVVAU4yIMTnQIXkj_PXd29A",
+  "witness_public_keys": {
+    "w0": "5c4QgneanRNLGRG1QrA0plGOZFWCpjian1GuQqk509A",
+    "w1": "Y5RXMp_iF7Q-_UICWI1WMcbbK2EbS4ofqovw5QXetHQ",
+    "w2": "cy_4cemxIMBYUlTx4OD0jUKoBtVdZZcgKDdfaA3sZnk"
+  },
+  "minimum_tree_size": 10,
+  "revocations": []
+}
