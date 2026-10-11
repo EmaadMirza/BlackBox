@@ -1,0 +1,40 @@
+name: blackbox-provider
+# Separate project, database and credentials; shares only the downstream transport.
+services:
+  provider_mock:
+    build: {context: ., dockerfile: services/provider_mock/Dockerfile}
+    init: true
+    read_only: true
+    tmpfs: [/tmp]
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    networks: [downstream_net, provider_storage]
+    environment:
+      DATABASE_URL: ${PROVIDER_DATABASE_URL:-postgresql+asyncpg://provider_app:UNPROVISIONED@provider-db:5432/provider}
+      ATTESTATION_ENFORCEMENT: "true"
+      PROVIDER_LOG_OPERATOR: local-mock-operator
+    healthcheck:
+      test: [CMD, /app/.venv/bin/python, -c, "import httpx; httpx.get('http://127.0.0.1:8000/health', timeout=2).raise_for_status()"]
+      interval: 10s
+      timeout: 3s
+      retries: 3
+  provider-db:
+    image: postgres:16
+    networks: [provider_storage]
+    environment:
+      POSTGRES_DB: provider
+      POSTGRES_USER: provider_admin
+      POSTGRES_PASSWORD: ${PROVIDER_DB_PASSWORD:-CHANGE_ME_PROVIDER_ADMIN}
+    volumes: [provider_db:/var/lib/postgresql/data]
+    healthcheck:
+      test: [CMD-SHELL, 'pg_isready -U "$${POSTGRES_USER}" -d "$${POSTGRES_DB}"']
+      interval: 10s
+      timeout: 3s
+      retries: 3
+networks:
+  downstream_net:
+    external: true
+    name: ${BLACKBOX_DOWNSTREAM_NETWORK:-blackbox_downstream}
+  provider_storage: {internal: true}
+volumes:
+  provider_db: {}

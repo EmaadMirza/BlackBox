@@ -1,0 +1,4 @@
+[console_scripts]
+blackbox = tools.cli:main
+blackbox-bench = bench.locustfile:main
+blackbox-ceremony = tools.ceremony:main

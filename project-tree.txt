@@ -1,0 +1,199 @@
+blackbox/  (current repository root)
+├── .github/
+│   └── workflows/
+│       └── ci.yml
+├── agent/
+│   ├── invoices/
+│   │   ├── clean.txt
+│   │   └── poisoned.txt
+│   ├── __init__.py
+│   ├── agent_loop.py
+│   └── tools.py
+├── baseline/
+│   ├── __init__.py
+│   ├── append_only_pg.py
+│   └── plain_log.py
+├── bench/
+│   ├── __init__.py
+│   └── locustfile.py
+├── deploy/
+│   ├── witness-host/
+│   │   ├── keys/
+│   │   │   └── .gitkeep
+│   │   └── docker-compose.yml
+│   └── networks.md
+├── docs/
+│   ├── BlackBox_v4.md
+│   ├── build-log.md
+│   ├── limitations.md
+│   └── scaffold-validation.md
+├── libs/
+│   ├── blackbox_core/
+│   │   ├── __init__.py
+│   │   ├── attestation.py
+│   │   ├── canonical.py
+│   │   ├── chain.py
+│   │   ├── checkpoint.py
+│   │   ├── commitments.py
+│   │   ├── crypto.py
+│   │   ├── encoding.py
+│   │   ├── epochs.py
+│   │   ├── errors.py
+│   │   ├── labels.py
+│   │   ├── merkle.py
+│   │   ├── receipts.py
+│   │   ├── schemas.py
+│   │   ├── sealing.py
+│   │   ├── signer_rules.py
+│   │   └── witness_set.py
+│   └── __init__.py
+├── services/
+│   ├── alerting/
+│   │   ├── Dockerfile
+│   │   ├── __init__.py
+│   │   └── collector.py
+│   ├── anchor/
+│   │   ├── Dockerfile
+│   │   ├── __init__.py
+│   │   └── main.py
+│   ├── approval/
+│   │   ├── Dockerfile
+│   │   ├── __init__.py
+│   │   ├── main.py
+│   │   ├── registry.py
+│   │   └── verify.py
+│   ├── gateway/
+│   │   ├── policy/
+│   │   │   ├── __init__.py
+│   │   │   ├── approval_client.py
+│   │   │   ├── engine.py
+│   │   │   └── rules.yaml
+│   │   ├── Dockerfile
+│   │   ├── __init__.py
+│   │   ├── assurance.py
+│   │   ├── auth_agent.py
+│   │   ├── auth_web.py
+│   │   ├── broker.py
+│   │   ├── context.py
+│   │   ├── main.py
+│   │   ├── mcp_adapter.py
+│   │   ├── payload_client.py
+│   │   ├── pipeline.py
+│   │   ├── queue.py
+│   │   └── tooldefs.py
+│   ├── ledger/
+│   │   ├── migrations/
+│   │   │   └── 001_init.sql
+│   │   ├── Dockerfile
+│   │   ├── __init__.py
+│   │   ├── bundle_export.py
+│   │   ├── checkpointer.py
+│   │   ├── db.py
+│   │   ├── main.py
+│   │   ├── merkle_store.py
+│   │   └── proofs.py
+│   ├── payload_store/
+│   │   ├── Dockerfile
+│   │   ├── __init__.py
+│   │   └── main.py
+│   ├── provider_mock/
+│   │   ├── Dockerfile
+│   │   ├── __init__.py
+│   │   ├── attestation_check.py
+│   │   ├── enforcement.py
+│   │   ├── events.py
+│   │   ├── limits.py
+│   │   └── main.py
+│   ├── reconciler/
+│   │   ├── Dockerfile
+│   │   ├── __init__.py
+│   │   ├── findings_store.py
+│   │   ├── join.py
+│   │   ├── main.py
+│   │   └── verdicts.py
+│   ├── signer/
+│   │   ├── keys/
+│   │   │   └── .gitkeep
+│   │   ├── Dockerfile
+│   │   ├── __init__.py
+│   │   ├── epoch_manager.py
+│   │   ├── heartbeat.py
+│   │   ├── main.py
+│   │   └── state.py
+│   ├── witness/
+│   │   ├── Dockerfile
+│   │   ├── __init__.py
+│   │   ├── alarms.py
+│   │   ├── gossip.py
+│   │   ├── heartbeat_monitor.py
+│   │   ├── main.py
+│   │   ├── processor.py
+│   │   └── store.py
+│   └── __init__.py
+├── tests/
+│   ├── acceptance/
+│   │   ├── __init__.py
+│   │   ├── test_e01.py
+│   │   ├── test_e02.py
+│   │   ├── test_e03.py
+│   │   ├── test_e04.py
+│   │   ├── test_e05.py
+│   │   ├── test_e06.py
+│   │   ├── test_e07.py
+│   │   ├── test_e08.py
+│   │   ├── test_e09.py
+│   │   ├── test_e10.py
+│   │   ├── test_e11.py
+│   │   └── test_e12.py
+│   ├── gates/
+│   │   ├── __init__.py
+│   │   ├── test_g1.py
+│   │   ├── test_g2.py
+│   │   ├── test_g3.py
+│   │   └── test_g4.py
+│   ├── property/
+│   │   ├── __init__.py
+│   │   ├── test_canonical.py
+│   │   └── test_merkle.py
+│   ├── unit/
+│   │   ├── __init__.py
+│   │   └── test_core.py
+│   ├── vectors/
+│   │   └── README.md
+│   └── __init__.py
+├── tools/
+│   ├── attack_suite/
+│   │   ├── __init__.py
+│   │   ├── e10_approval_abuse.py
+│   │   ├── e11_key_compromise.py
+│   │   ├── e12_tool_poisoning.py
+│   │   ├── e3_ledger_rewrite.py
+│   │   ├── e4_gateway_compromise.py
+│   │   ├── e5_bypass.py
+│   │   ├── e6_witness_outage.py
+│   │   ├── e7_split_view.py
+│   │   ├── fuzz_ledger.py
+│   │   └── tamper_battery.py
+│   ├── verifier/
+│   │   ├── __init__.py
+│   │   ├── bundle_loader.py
+│   │   ├── pinned_keys.example.json
+│   │   ├── verdicts.py
+│   │   └── verify.py
+│   ├── __init__.py
+│   ├── ceremony.py
+│   └── cli.py
+├── .dockerignore
+├── .env.example
+├── .gitignore
+├── AGENTS.md
+├── BlackBox_Skills.md
+├── BlackBox_v4.md
+├── CLAUDE.md
+├── Makefile
+├── README.md
+├── docker-compose.provider.yml
+├── docker-compose.yml
+├── project-tree.txt
+├── pyproject.toml
+└── uv.lock

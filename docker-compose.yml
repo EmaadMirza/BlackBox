@@ -1,0 +1,156 @@
+name: blackbox
+# Scaffold only: factories raise NotImplementedError; healthchecks cannot pass yet.
+x-app: &app
+  init: true
+  restart: "no"
+  read_only: true
+  tmpfs: [/tmp]
+  cap_drop: [ALL]
+  security_opt: [no-new-privileges:true]
+  healthcheck:
+    test: [CMD, /app/.venv/bin/python, -c, "import httpx; httpx.get('http://127.0.0.1:8000/health', timeout=2).raise_for_status()"]
+    interval: 10s
+    timeout: 3s
+    retries: 3
+    start_period: 10s
+
+services:
+  gateway:
+    <<: *app
+    build: {context: ., dockerfile: services/gateway/Dockerfile}
+    networks: [agent_net, enforce_net, seal_net, downstream_net]
+    ports: ["127.0.0.1:8000:8000"]
+    environment:
+      SIGNER_URL: http://signer:8000
+      LEDGER_URL: http://ledger:8000
+      APPROVAL_URL: http://approval:8000
+      PAYLOAD_URL: http://payload_store:8000
+      PROVIDER_URL: http://provider_mock:8000
+      REDIS_URL: redis://redis:6379/0
+    volumes: [gateway_queue:/var/lib/blackbox/queue]
+  signer:
+    <<: *app
+    build: {context: ., dockerfile: services/signer/Dockerfile}
+    command: [/app/.venv/bin/uvicorn, services.signer.main:create_app, --factory, --host, 0.0.0.0, --port, "8000", --workers, "1"]
+    networks: [seal_net]
+    environment:
+      LEDGER_URL: http://ledger:8000
+    volumes: [signer_state:/var/lib/blackbox/signer, "./services/signer/keys:/run/blackbox/keys:ro"]
+  ledger:
+    <<: *app
+    build: {context: ., dockerfile: services/ledger/Dockerfile}
+    networks: [seal_net, witness_net, read_net]
+    environment:
+      DATABASE_URL: ${LEDGER_DATABASE_URL:-postgresql+asyncpg://blackbox_ledger:UNPROVISIONED@ledger-db:5432/blackbox}
+      WITNESS_URLS: http://witness-1:8000,http://witness-2:8000,http://witness-3:8000
+    volumes: [merkle_state:/var/lib/blackbox/merkle]
+  ledger-db:
+    image: postgres:16
+    networks: [seal_net]
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-blackbox}
+      POSTGRES_USER: ${POSTGRES_USER:-blackbox_admin}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-CHANGE_ME_LEDGER_ADMIN}
+    volumes: ["ledger_db:/var/lib/postgresql/data", "./services/ledger/migrations:/docker-entrypoint-initdb.d:ro"]
+    healthcheck:
+      test: [CMD-SHELL, 'pg_isready -U "$${POSTGRES_USER}" -d "$${POSTGRES_DB}"']
+      interval: 10s
+      timeout: 3s
+      retries: 3
+  redis:
+    image: redis:7-alpine
+    networks: [enforce_net]
+    command: [redis-server, --appendonly, "yes"]
+    volumes: [redis_data:/data]
+    healthcheck:
+      test: [CMD, redis-cli, ping]
+      interval: 10s
+      timeout: 3s
+      retries: 3
+  approval:
+    <<: *app
+    build: {context: ., dockerfile: services/approval/Dockerfile}
+    networks: [enforce_net]
+  payload_store:
+    <<: *app
+    build: {context: ., dockerfile: services/payload_store/Dockerfile}
+    networks: [seal_net]
+    volumes: [payload_data:/var/lib/blackbox/payloads]
+  reconciler:
+    <<: *app
+    build: {context: ., dockerfile: services/reconciler/Dockerfile}
+    networks: [read_net, downstream_net]
+    environment:
+      LEDGER_URL: http://ledger:8000
+      PROVIDER_EVENTS_URL: http://provider_mock:8000/events
+      PROVIDER_LOG_OPERATOR: local-mock-operator
+  anchor:
+    <<: *app
+    build: {context: ., dockerfile: services/anchor/Dockerfile}
+    networks: [read_net]
+    profiles: [stage5]
+  alerting:
+    <<: *app
+    build: {context: ., dockerfile: services/alerting/Dockerfile}
+    networks: [read_net, enforce_net, witness_net, seal_net]
+  agent:
+    <<: *app
+    build: {context: ., dockerfile: services/gateway/Dockerfile}
+    command: [/app/.venv/bin/python, -c, "import asyncio; from pathlib import Path; from agent.agent_loop import run; asyncio.run(run('UNCONFIGURED', Path('/app/agent/invoices/clean.txt')))"]
+    networks: [agent_net]
+    environment:
+      GATEWAY_URL: http://gateway:8000
+    # A loop has no HTTP health route; a completed local status file is future work.
+    healthcheck:
+      test: [CMD, /app/.venv/bin/python, -c, "from pathlib import Path; assert Path('/tmp/agent-ready').exists()"]
+      interval: 10s
+      timeout: 3s
+      retries: 3
+  witness-1:
+    <<: *app
+    build: {context: ., dockerfile: services/witness/Dockerfile}
+    networks: [witness_net]
+    environment:
+      WITNESS_ID: witness-1
+      LEDGER_URL: http://ledger:8000
+    volumes: [witness_1_data:/var/lib/blackbox/witness, witness_1_keys:/run/blackbox/witness-keys:ro]
+  witness-2:
+    <<: *app
+    build: {context: ., dockerfile: services/witness/Dockerfile}
+    networks: [witness_net]
+    environment:
+      WITNESS_ID: witness-2
+      LEDGER_URL: http://ledger:8000
+    volumes: [witness_2_data:/var/lib/blackbox/witness, witness_2_keys:/run/blackbox/witness-keys:ro]
+  witness-3:
+    <<: *app
+    build: {context: ., dockerfile: services/witness/Dockerfile}
+    networks: [witness_net]
+    environment:
+      WITNESS_ID: witness-3
+      LEDGER_URL: http://ledger:8000
+    volumes: [witness_3_data:/var/lib/blackbox/witness, witness_3_keys:/run/blackbox/witness-keys:ro]
+
+networks:
+  agent_net: {internal: true}
+  enforce_net: {internal: true}
+  seal_net: {internal: true}
+  downstream_net:
+    name: ${BLACKBOX_DOWNSTREAM_NETWORK:-blackbox_downstream}
+    internal: true
+  witness_net: {internal: true}
+  read_net: {internal: true}
+
+volumes:
+  gateway_queue: {}
+  signer_state: {}
+  merkle_state: {}
+  ledger_db: {}
+  redis_data: {}
+  payload_data: {}
+  witness_1_data: {}
+  witness_1_keys: {}
+  witness_2_data: {}
+  witness_2_keys: {}
+  witness_3_data: {}
+  witness_3_keys: {}

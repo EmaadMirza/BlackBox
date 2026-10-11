@@ -1,0 +1,13 @@
+{
+  "source": "https://www.rfc-editor.org/rfc/rfc8785.html#section-3.2.3",
+  "input": {
+    "€": "Euro Sign",
+    "\r": "Carriage Return",
+    "דּ": "Hebrew Letter Dalet With Dagesh",
+    "1": "One",
+    "😀": "Emoji: Grinning Face",
+    "": "Control",
+    "ö": "Latin Small Letter O With Diaeresis"
+  },
+  "canonical": "{\"\\r\":\"Carriage Return\",\"1\":\"One\",\"\":\"Control\",\"ö\":\"Latin Small Letter O With Diaeresis\",\"€\":\"Euro Sign\",\"😀\":\"Emoji: Grinning Face\",\"דּ\":\"Hebrew Letter Dalet With Dagesh\"}"
+}
