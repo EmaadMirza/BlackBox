@@ -39,6 +39,12 @@ def variants(bundle: Bundle) -> dict[str, Bundle]:
     a["certificate"], b["certificate"] = b["certificate"], a["certificate"]
     cases["swap_epoch_certificates"] = Bundle.model_validate(data)
     data = bundle.model_dump()
+    data["entries"][5]["body"]["epoch_id"] = 0
+    cases["stale_epoch_signing"] = Bundle.model_validate(data)
+    data = bundle.model_dump()
+    data["epochs"][1]["epoch_id"] = 3
+    cases["skipped_epoch_id"] = Bundle.model_validate(data)
+    data = bundle.model_dump()
     a = data["entries"][5]
     b = data["entries"][6]
     a["signature"], b["signature"] = b["signature"], a["signature"]
@@ -74,6 +80,8 @@ def evaluate(bundle: Bundle, pins: PinnedKeys) -> dict[str, object]:
         "duplicate": "TAMPERED",
         "truncate": "MISSING",
         "swap_epoch_certificates": "TAMPERED",
+        "stale_epoch_signing": "TAMPERED",
+        "skipped_epoch_id": "TAMPERED",
         "swap_signatures": "TAMPERED",
         "unsigned_recovery_for_deleted_seq_7": "TAMPERED",
     }
