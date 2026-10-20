@@ -122,6 +122,16 @@ class SignerSealer:
         else:
             epoch_certificate_id = self._epoch_certificate_id
             signing_operation = self._signing_operation
+        valid_from = (
+            self._epoch_manager.certificate.valid_from
+            if self._epoch_manager is not None
+            else self._valid_from
+        )
+        valid_until = (
+            self._epoch_manager.certificate.valid_until
+            if self._epoch_manager is not None
+            else self._valid_until
+        )
         try:
             parsed_candidate = parse_entry(candidate)
         except (TypeError, ValueError) as exc:
@@ -186,8 +196,8 @@ class SignerSealer:
             last_hash=last_hash,
             epoch_id=durable_epoch_id,
             epoch_certificate_id=epoch_certificate_id,
-            valid_from=self._valid_from,
-            valid_until=self._valid_until,
+            valid_from=valid_from,
+            valid_until=valid_until,
             now=now,
             entries_this_second=0,
             rate_cap=self._rate_cap,
