@@ -214,6 +214,26 @@ class EpochEnd(EntryBase):
     type: Literal["epoch_end"]
 
 
+class Recovery(EntryBase):
+    """New-epoch declaration of a permanently burned sequence range."""
+
+    type: Literal["recovery"]
+    burned_first_seq: Count
+    burned_last_seq: Count
+    last_known_entry_hash: Hash
+    lost_epoch_id: Count
+
+    @model_validator(mode="after")
+    def validate_burned_range(self) -> Self:
+        if self.burned_first_seq > self.burned_last_seq:
+            raise ValueError("recovery burned range is reversed")
+        if self.seq != self.burned_last_seq + 1:
+            raise ValueError("recovery sequence must follow burned range")
+        if self.lost_epoch_id >= self.epoch_id:
+            raise ValueError("recovery must be sealed by a newer epoch")
+        return self
+
+
 class ToolDefs(EntryBase):
     """Tool snapshot marker, §8.1."""
 
@@ -249,6 +269,7 @@ Entry = Annotated[
     | Action
     | EpochStart
     | EpochEnd
+    | Recovery
     | ToolDefs
     | Gap
     | Breakglass,

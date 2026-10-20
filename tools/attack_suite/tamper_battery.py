@@ -43,6 +43,21 @@ def variants(bundle: Bundle) -> dict[str, Bundle]:
     b = data["entries"][6]
     a["signature"], b["signature"] = b["signature"], a["signature"]
     cases["swap_signatures"] = Bundle.model_validate(data)
+    data = bundle.model_dump()
+    del data["entries"][7]
+    recovery = data["entries"][7].copy()
+    recovery["body"] = {
+        **recovery["body"],
+        "type": "recovery",
+        "seq": 8,
+        "epoch_id": 1,
+        "burned_first_seq": 7,
+        "burned_last_seq": 7,
+        "last_known_entry_hash": entry_hash(parse_entry(data["entries"][6]["body"])),
+        "lost_epoch_id": 0,
+    }
+    data["entries"].insert(7, recovery)
+    cases["unsigned_recovery_for_deleted_seq_7"] = Bundle.model_validate(data)
     return cases
 
 
@@ -60,6 +75,7 @@ def evaluate(bundle: Bundle, pins: PinnedKeys) -> dict[str, object]:
         "truncate": "MISSING",
         "swap_epoch_certificates": "TAMPERED",
         "swap_signatures": "TAMPERED",
+        "unsigned_recovery_for_deleted_seq_7": "TAMPERED",
     }
     for name, changed in cases.items():
         report = verify_evidence(changed, pins)

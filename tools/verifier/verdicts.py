@@ -4,7 +4,13 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 
-PRECEDENCE = {"VERIFIED": 0, "UNVERIFIED": 1, "MISSING": 2, "TAMPERED": 3}
+PRECEDENCE = {
+    "VERIFIED": 0,
+    "UNVERIFIED": 1,
+    "RECOVERY_DISCONTINUITY": 2,
+    "MISSING": 3,
+    "TAMPERED": 4,
+}
 
 
 def resolve(verdicts: list[str]) -> str:
@@ -27,10 +33,12 @@ class EntryVerdict:
 class VerificationReport:
     entries: list[EntryVerdict]
     findings: list[dict[str, object]] = field(default_factory=list)
+    flags: list[str] = field(default_factory=list)
 
     @property
     def verdict(self) -> str:
-        return resolve([entry.verdict for entry in self.entries])
+        base = resolve([entry.verdict for entry in self.entries])
+        return resolve([base, *self.flags])
 
     def to_dict(self) -> dict[str, object]:
         return {
@@ -39,4 +47,5 @@ class VerificationReport:
                 {"seq": e.seq, "verdict": e.verdict, "reasons": e.reasons} for e in self.entries
             ],
             "findings": self.findings,
+            "flags": self.flags,
         }

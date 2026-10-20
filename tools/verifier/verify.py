@@ -12,7 +12,7 @@ from libs.blackbox_core.epochs import certificate_id, validate_contiguity, verif
 from libs.blackbox_core.evidence import Bundle, PinnedKeys
 from libs.blackbox_core.labels import derive_log_id
 from libs.blackbox_core.merkle import MerkleTree, leaf_hash, verify_consistency, verify_inclusion
-from libs.blackbox_core.schemas import EpochEnd, EpochStart, Outcome, SealedEntry
+from libs.blackbox_core.schemas import EpochEnd, EpochStart, Outcome, Recovery, SealedEntry
 from libs.blackbox_core.sealing import sealed_bytes, verify_entry
 from libs.blackbox_core.signing import structure_hash, verify_structure
 from libs.blackbox_core.witness_set import has_quorum, verify_witness_set
@@ -20,6 +20,24 @@ from tools.verifier.bundle_loader import load_bundle, load_pinned_keys
 from tools.verifier.verdicts import EntryVerdict, VerificationReport
 
 MAX_ENTRIES = 100_000
+
+
+def validate_recovery_transition(previous: object, recovery: Recovery) -> None:
+    """Validate a recovery entry against the last authenticated old-epoch entry."""
+
+    if not isinstance(recovery, Recovery) or not isinstance(previous, SealedEntry):
+        raise ValueError("recovery transition shape is invalid")
+    previous_body = previous.body
+    if recovery.epoch_id != previous_body.epoch_id + 1:
+        raise ValueError("recovery must start the next epoch")
+    if recovery.lost_epoch_id != previous_body.epoch_id:
+        raise ValueError("recovery lost epoch does not match previous epoch")
+    if recovery.burned_first_seq != previous_body.seq + 1:
+        raise ValueError("recovery burned range does not begin after last known entry")
+    if recovery.prev_hash != recovery.last_known_entry_hash:
+        raise ValueError("recovery previous hash does not match declared last hash")
+    if recovery.last_known_entry_hash != entry_hash(previous_body):
+        raise ValueError("recovery last known hash is not the previous entry hash")
 
 
 def verify_bundle(bundle_path: Path, pinned_keys_path: Path) -> VerificationReport:
@@ -35,6 +53,7 @@ def verify_evidence(bundle: Bundle, pins: PinnedKeys) -> VerificationReport:
     results: dict[int, EntryVerdict] = {}
     parsed: dict[int, SealedEntry] = {}
     order = []
+    flags: list[str] = []
 
     def mark(seq: int, verdict: str, reason: str) -> None:
         results.setdefault(seq, EntryVerdict(seq)).add(verdict, reason)
@@ -135,10 +154,22 @@ def verify_evidence(bundle: Bundle, pins: PinnedKeys) -> VerificationReport:
                 mark(seq, "TAMPERED", "signer timestamp decreased")
             if body.epoch_id != previous.epoch_id and (
                 body.epoch_id != previous.epoch_id + 1
-                or not isinstance(body, EpochStart)
-                or not isinstance(previous, EpochEnd)
+                or not (
+                    (isinstance(body, EpochStart) and isinstance(previous, EpochEnd))
+                    or isinstance(body, Recovery)
+                )
             ):
                 mark(seq, "TAMPERED", "epoch transition lacks contiguous end/start")
+            if isinstance(body, Recovery):
+                if seq - 1 not in parsed:
+                    mark(seq, "MISSING", "recovery lacks its last known entry")
+                else:
+                    try:
+                        validate_recovery_transition(parsed[seq - 1], body)
+                    except ValueError as exc:
+                        mark(seq, "TAMPERED", str(exc))
+                    else:
+                        flags.append("RECOVERY_DISCONTINUITY")
             if body.epoch_id == previous.epoch_id and isinstance(previous, EpochEnd):
                 mark(seq, "TAMPERED", "entry after epoch_end")
             if body.epoch_id == previous.epoch_id and isinstance(body, EpochStart):
@@ -290,4 +321,5 @@ def verify_evidence(bundle: Bundle, pins: PinnedKeys) -> VerificationReport:
     return VerificationReport(
         [results[seq] for seq in sorted(results)],
         [finding.model_dump() for finding in bundle.findings],
+        list(dict.fromkeys(flags)),
     )

@@ -61,6 +61,9 @@ remain incomplete, and G3/G4 acceptance tests are expected-failure placeholders.
 - A crash inside the state+index commit window blocks the signer until an operator
   recovers it; future hardening could store old/new file hashes in the marker so the
   signer can finish the commit automatically.
+- The proposed Option D issuance journal protects against crashes and operator
+  error only, not a malicious signer host; witness quorum remains the defence
+  against journal rewriting or host equivocation.
 - Source wording about expired epoch keys must distinguish historical verification
   of valid in-window signatures from use of an old key for new out-of-window data.
 - E6's partition model does not specify whether heartbeat traffic is also blocked;
