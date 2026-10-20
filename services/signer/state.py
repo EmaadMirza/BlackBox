@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import os
 import tempfile
+from collections.abc import Mapping
 from pathlib import Path
 from typing import Any
 
@@ -15,6 +16,9 @@ DEFAULT_STATE_PATH = Path("/var/lib/blackbox/signer/state.json")
 _STATE_FIELDS = frozenset({"last_seq", "last_hash", "epoch_id", "log_id"})
 _MARKER_SUFFIX = ".commit"
 _INITIALIZED_SUFFIX = ".initialized"
+_OUTCOME_SUFFIX = ".outcomes.json"
+OUTCOME_INDEX_FORMAT_VERSION = "1"
+_OUTCOME_FIELDS = frozenset({"format_version", "log_id", "outcomes"})
 
 
 def _state_path() -> Path:
@@ -28,6 +32,11 @@ def _marker_path(path: Path) -> Path:
 
 def _initialized_path(path: Path) -> Path:
     return path.with_name(f".{path.name}{_INITIALIZED_SUFFIX}")
+
+
+def _outcome_index_path(path: Path | None = None) -> Path:
+    path = _state_path() if path is None else path
+    return path.with_name(f"{path.name}{_OUTCOME_SUFFIX}")
 
 
 def _reject_duplicate_fields(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
@@ -103,7 +112,81 @@ def load_state(expected_log_id: str | None = None) -> tuple[int, str, int]:
             raise ValueError("configured log_id is invalid") from exc
         if log_id != expected_log_id:
             raise ValueError("durable state log identity does not match configuration")
+    load_outcome_index(log_id)
     return last_seq, last_hash, epoch_id
+
+
+class OutcomeIndexError(ValueError):
+    """The signer-owned outcome index is absent, corrupt or incompatible."""
+
+
+def compact_outcome_index(outcomes: Mapping[int, str]) -> dict[int, str]:
+    """Return a deterministic, lossless index; no outcome may be discarded."""
+
+    compacted: dict[int, str] = {}
+    for intent_seq, outcome_hash in outcomes.items():
+        if type(intent_seq) is not int or intent_seq < 0:
+            raise OutcomeIndexError("outcome index sequence is invalid")
+        try:
+            decode_hash(outcome_hash)
+        except (TypeError, ValueError) as exc:
+            raise OutcomeIndexError("outcome index hash is invalid") from exc
+        compacted[intent_seq] = outcome_hash
+    return dict(sorted(compacted.items()))
+
+
+def _validate_outcome_document(document: object, expected_log_id: str) -> dict[int, str]:
+    if type(document) is not dict or set(document) != _OUTCOME_FIELDS:
+        raise OutcomeIndexError("outcome index fields are invalid")
+    if document["format_version"] != OUTCOME_INDEX_FORMAT_VERSION:
+        raise OutcomeIndexError("outcome index format version is unsupported")
+    if document["log_id"] != expected_log_id:
+        raise OutcomeIndexError("outcome index log identity does not match configuration")
+    raw_outcomes = document["outcomes"]
+    if type(raw_outcomes) is not dict:
+        raise OutcomeIndexError("outcome index mapping is invalid")
+    parsed: dict[int, str] = {}
+    for raw_seq, outcome_hash in raw_outcomes.items():
+        if not isinstance(raw_seq, str) or not raw_seq.isdecimal() or str(int(raw_seq)) != raw_seq:
+            raise OutcomeIndexError("outcome index sequence is invalid")
+        parsed[int(raw_seq)] = outcome_hash
+    return compact_outcome_index(parsed)
+
+
+def load_outcome_index(expected_log_id: str) -> dict[int, str]:
+    """Load the versioned index; initialized deployments never get an empty fallback."""
+
+    path = _state_path()
+    marker = _marker_path(path)
+    if marker.exists():
+        raise OutcomeIndexError("uncertain signer state commit; recovery is required")
+    try:
+        decode_hash(expected_log_id)
+    except (TypeError, ValueError) as exc:
+        raise OutcomeIndexError("configured log_id is invalid") from exc
+    index_path = _outcome_index_path(path)
+    initialized = _initialized_path(path)
+    if not index_path.exists():
+        if initialized.exists() or path.exists():
+            raise OutcomeIndexError("initialized signer outcome index is missing")
+        return {}
+    if not path.exists() and not initialized.exists():
+        raise OutcomeIndexError("outcome index exists without signer state")
+    try:
+        with index_path.open("r", encoding="utf-8") as index_file:
+            document = json.load(
+                index_file,
+                object_pairs_hook=_reject_duplicate_fields,
+                parse_constant=_reject_json_constant,
+            )
+    except (OSError, UnicodeDecodeError, ValueError, json.JSONDecodeError) as exc:
+        raise OutcomeIndexError("outcome index is unreadable or corrupt") from exc
+    try:
+        return _validate_outcome_document(document, expected_log_id)
+    except OutcomeIndexError:
+        raise
+    except (TypeError, ValueError) as exc:
+        raise OutcomeIndexError("outcome index is malformed") from exc
 
 
 def _fsync_directory(directory: Path) -> None:
@@ -114,7 +197,13 @@ def _fsync_directory(directory: Path) -> None:
         os.close(directory_fd)
 
 
-def persist_state(last_seq: int, last_hash: str, epoch_id: int, log_id: str) -> None:
+def persist_state(
+    last_seq: int,
+    last_hash: str,
+    epoch_id: int,
+    log_id: str,
+    outcome_index: Mapping[int, str] | None = None,
+) -> None:
     """Persist signer state with a detectable pre-commit marker."""
 
     candidate = _validate_values(last_seq, last_hash, epoch_id, log_id)
@@ -140,6 +229,17 @@ def persist_state(last_seq: int, last_hash: str, epoch_id: int, log_id: str) -> 
         parent.mkdir(parents=True, exist_ok=True)
     elif not parent.is_dir():
         raise OSError(f"signer state parent is not a directory: {parent}")
+
+    index_path = _outcome_index_path(path)
+    initialized = _initialized_path(path)
+    if outcome_index is None:
+        if path.exists() or initialized.exists():
+            outcome_index = load_outcome_index(log_id)
+        elif index_path.exists():
+            raise OutcomeIndexError("outcome index exists without signer state")
+        else:
+            outcome_index = {}
+    compacted_index = compact_outcome_index(outcome_index)
 
     marker_fd = os.open(marker, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
     try:
@@ -176,10 +276,24 @@ def persist_state(last_seq: int, last_hash: str, epoch_id: int, log_id: str) -> 
         separators=(",", ":"),
         sort_keys=True,
     )
+    index_payload = json.dumps(
+        {
+            "format_version": OUTCOME_INDEX_FORMAT_VERSION,
+            "log_id": log_id,
+            "outcomes": {str(seq): value for seq, value in compacted_index.items()},
+        },
+        ensure_ascii=True,
+        separators=(",", ":"),
+        sort_keys=True,
+    )
     file_descriptor, temporary_name = tempfile.mkstemp(
         prefix=f".{path.name}.", suffix=".tmp", dir=parent
     )
     open_descriptor: int | None = file_descriptor
+    index_descriptor, index_temporary_name = tempfile.mkstemp(
+        prefix=f".{index_path.name}.", suffix=".tmp", dir=parent
+    )
+    index_open_descriptor: int | None = index_descriptor
     try:
         os.fchmod(file_descriptor, 0o600)
         with os.fdopen(file_descriptor, "w", encoding="utf-8") as temporary_file:
@@ -187,8 +301,16 @@ def persist_state(last_seq: int, last_hash: str, epoch_id: int, log_id: str) -> 
             temporary_file.write(payload)
             temporary_file.flush()
             os.fsync(temporary_file.fileno())
+        os.fchmod(index_descriptor, 0o600)
+        with os.fdopen(index_descriptor, "w", encoding="utf-8") as index_file:
+            index_open_descriptor = None
+            index_file.write(index_payload)
+            index_file.flush()
+            os.fsync(index_file.fileno())
         os.replace(temporary_name, path)
         temporary_name = ""
+        os.replace(index_temporary_name, index_path)
+        index_temporary_name = ""
         _fsync_directory(parent)
         initialized = _initialized_path(path)
         if not initialized.exists():
@@ -207,5 +329,12 @@ def persist_state(last_seq: int, last_hash: str, epoch_id: int, log_id: str) -> 
         if temporary_name:
             try:
                 os.unlink(temporary_name)
+            except FileNotFoundError:
+                pass
+        if index_open_descriptor is not None:
+            os.close(index_open_descriptor)
+        if index_temporary_name:
+            try:
+                os.unlink(index_temporary_name)
             except FileNotFoundError:
                 pass

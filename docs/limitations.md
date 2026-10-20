@@ -1,8 +1,9 @@
 # Scaffold limitations and specification ambiguities
 
-No security behavior is implemented or verified. Function bodies raise
-`NotImplementedError`; HTTP factories do not create apps, register routes, or serve
-healthchecks. All tests are expected-failure placeholders. No gate has passed.
+Stage 1 core and the current Stage 2 signer foundations have implemented, locally
+verified behavior. The remaining service/networking and acceptance surfaces are still
+scaffolded: many function bodies raise `NotImplementedError`, HTTP operation routes
+remain incomplete, and G3/G4 acceptance tests are expected-failure placeholders.
 
 ## Conflicting requirements requiring a later decision
 
@@ -49,10 +50,17 @@ healthchecks. All tests are expected-failure placeholders. No gate has passed.
   unimplemented. Other endpoint contracts, bundle
   manifest, pinned-key JSON format and policy rule grammar/precedence remain
   placeholders. CLI names are fixed by §17.3 but argument parsing is unimplemented.
-- Signer chain state now records `log_id` and refuses uncertain commits, missing
-  initialized state and legacy/corrupt state. Recovery is fail-closed but does not
-  yet provide an operator rebuild protocol or a transaction spanning chain state,
-  the future outcome index and the ledger.
+- Signer chain state records `log_id` and refuses uncertain commits, missing
+  initialized state and legacy/corrupt state. The signer also persists a versioned,
+  signer-owned outcome index beside chain state and uses a shared pre-commit marker
+  so an interrupted state/index replacement fails closed. Recovery is still
+  fail-closed: there is no operator rebuild protocol, real ledger-backed
+  `HistorySource`, power-loss injection evidence, or transaction spanning signer
+  state, the outcome index and the ledger. The current history source is a test-only
+  protocol/fake and is not a network or ledger implementation.
+- A crash inside the state+index commit window blocks the signer until an operator
+  recovers it; future hardening could store old/new file hashes in the marker so the
+  signer can finish the commit automatically.
 - Source wording about expired epoch keys must distinguish historical verification
   of valid in-window signatures from use of an old key for new out-of-window data.
 - E6's partition model does not specify whether heartbeat traffic is also blocked;

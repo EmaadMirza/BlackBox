@@ -14,10 +14,17 @@ from libs.blackbox_core.chain import entry_hash
 from libs.blackbox_core.crypto import SigningOperation
 from libs.blackbox_core.encoding import decode_hash, parse_timestamp
 from libs.blackbox_core.errors import SignerRuleError
-from libs.blackbox_core.schemas import SealedEntry, parse_entry
+from libs.blackbox_core.schemas import Intent, Outcome, SealedEntry, parse_entry
 from libs.blackbox_core.signer_rules import SignerState, check_seal_request
 from services.signer import state
 from services.signer.clock import system_utc_now
+from services.signer.history import (
+    HistoryIntegrityError,
+    HistorySource,
+    HistorySourceError,
+    OutcomeConflictError,
+    verify_history_record,
+)
 from services.signer.rate_limit import DurableRateLimiter
 
 
@@ -44,6 +51,7 @@ class SignerSealer:
         signing_operation: SigningOperation,
         rate_cap: int = 1000,
         epoch_id: int | None = None,
+        history_source: HistorySource | None = None,
     ) -> None:
         if epoch_id is not None and (type(epoch_id) is not int or epoch_id < 0):
             raise ValueError("epoch_id must be a non-negative integer")
@@ -67,6 +75,7 @@ class SignerSealer:
         self._rate_cap = rate_cap
         self._signing_operation = signing_operation
         self._rate_limiter = DurableRateLimiter()
+        self._history_source = history_source
 
     def seal(self, candidate: object) -> SealedEntry:
         """Validate, sign, durably advance, and return one gateway entry.
@@ -79,6 +88,7 @@ class SignerSealer:
         now = self._clock()
         parse_timestamp(now)
         last_seq, last_hash, durable_epoch_id = state.load_state(self._log_id)
+        outcome_index = state.load_outcome_index(self._log_id)
         try:
             parsed_candidate = parse_entry(candidate)
         except (TypeError, ValueError) as exc:
@@ -87,6 +97,52 @@ class SignerSealer:
             raise SignerRuleError("wrong log identity")
         if self._epoch_id is not None and durable_epoch_id != self._epoch_id:
             raise SignerRuleError("wrong epoch identity")
+
+        intents: dict[int, Intent] = {}
+        outcomes: dict[int, Outcome] = {}
+        if isinstance(parsed_candidate, Outcome):
+            if self._history_source is None:
+                raise HistorySourceError("history source is unavailable")
+            try:
+                intent_record = self._history_source.get_intent(
+                    self._log_id, parsed_candidate.intent_seq
+                )
+                intent_entry = verify_history_record(
+                    intent_record, self._log_id, target_seq=parsed_candidate.intent_seq
+                )
+                if not isinstance(intent_entry.body, Intent):
+                    raise HistoryIntegrityError("history target is not an intent")
+                if intent_entry.body.seq != parsed_candidate.intent_seq:
+                    raise HistoryIntegrityError("history intent sequence disagrees")
+                if (
+                    intent_entry.body.action.idempotency_key
+                    != parsed_candidate.action.idempotency_key
+                ):
+                    raise HistoryIntegrityError("history idempotency disagreement")
+                intents[parsed_candidate.intent_seq] = intent_entry.body
+                previous_hash = outcome_index.get(parsed_candidate.intent_seq)
+                if previous_hash is not None:
+                    if not parsed_candidate.retry:
+                        raise OutcomeConflictError("intent already has a sealed outcome")
+                    prior_record = self._history_source.get_outcome(
+                        self._log_id, parsed_candidate.intent_seq, previous_hash
+                    )
+                    prior_entry = verify_history_record(
+                        prior_record,
+                        self._log_id,
+                        target_seq=prior_record.target_seq,
+                    )
+                    if (
+                        not isinstance(prior_entry.body, Outcome)
+                        or entry_hash(prior_entry.body) != previous_hash
+                        or prior_entry.body.intent_seq != parsed_candidate.intent_seq
+                    ):
+                        raise HistoryIntegrityError("indexed outcome evidence disagrees")
+                    outcomes[parsed_candidate.intent_seq] = prior_entry.body
+            except (HistorySourceError, HistoryIntegrityError, OutcomeConflictError):
+                raise
+            except Exception as exc:
+                raise HistorySourceError("history source failed closed") from exc
 
         signer_state = SignerState(
             last_seq=last_seq,
@@ -99,6 +155,8 @@ class SignerSealer:
             entries_this_second=0,
             rate_cap=self._rate_cap,
             caller="gateway",
+            intents=intents,
+            outcomes=outcomes,
         )
         check_seal_request(signer_state, parsed_candidate)
 
@@ -112,7 +170,19 @@ class SignerSealer:
         # The state write is deliberately the final operation.  The existing
         # state implementation performs an atomic replacement, so a failed
         # write cannot produce a successful return.
-        state.persist_state(sealed.body.seq, sealed_body_hash, sealed.body.epoch_id, self._log_id)
+        if isinstance(sealed.body, Outcome):
+            outcome_index[sealed.body.intent_seq] = sealed_body_hash
+            state.persist_state(
+                sealed.body.seq,
+                sealed_body_hash,
+                sealed.body.epoch_id,
+                self._log_id,
+                outcome_index,
+            )
+        else:
+            state.persist_state(
+                sealed.body.seq, sealed_body_hash, sealed.body.epoch_id, self._log_id
+            )
         return sealed
 
 
