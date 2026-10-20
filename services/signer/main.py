@@ -9,8 +9,10 @@ from libs.blackbox_core.canonical import loads
 from libs.blackbox_core.errors import SignerRuleError
 from libs.blackbox_core.schemas import SealedEntry, parse_entry
 from services.signer.auth import SignerHTTPError, install_error_handlers, require_bearer
+from services.signer.history import HistoryIntegrityError, HistorySourceError, OutcomeConflictError
 from services.signer.http_contract import HEALTH_PATH, SEAL_PATH, HealthResponse
 from services.signer.sealer import SignerSealer
+from services.signer.state import OutcomeIndexError
 
 
 def create_app(*, sealer: SignerSealer | None = None) -> FastAPI:
@@ -40,6 +42,20 @@ async def seal_http(request: Request, _: None = Depends(require_bearer)) -> Seal
 
     try:
         return signer.seal(candidate)
+    except HistorySourceError as exc:
+        raise SignerHTTPError(503, "signer_unavailable", "Signer unavailable.") from exc
+    except HistoryIntegrityError as exc:
+        raise SignerHTTPError(
+            409, "history_integrity", "History evidence failed integrity validation."
+        ) from exc
+    except OutcomeConflictError as exc:
+        raise SignerHTTPError(
+            409, "outcome_conflict", "The intent already has a conflicting outcome."
+        ) from exc
+    except OutcomeIndexError as exc:
+        raise SignerHTTPError(
+            409, "outcome_index_invalid", "Signer outcome state is invalid."
+        ) from exc
     except SignerRuleError as exc:
         raise SignerHTTPError(409, "rule_conflict", "Request conflicts with signer rules.") from exc
     except (OSError, ValueError) as exc:

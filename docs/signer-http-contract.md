@@ -148,7 +148,7 @@ be added without changing the envelope or status meanings.
 | --- | --- | --- |
 | 200 | Successful operation | Endpoint-specific response above |
 | 401 | Missing/invalid auth with configured token | `invalid_auth` / `Authentication required.` |
-| 409 | Well-formed request conflicts with signer rules or available state | `rule_conflict` / `Request conflicts with signer rules.` |
+| 409 | Well-formed request conflicts with signer rules or non-retryable authenticated state | `rule_conflict` / `Request conflicts with signer rules.`; `history_integrity` / `History evidence failed integrity validation.`; `outcome_conflict` / `The intent already has a conflicting outcome.`; `outcome_index_invalid` / `Signer outcome state is invalid.` |
 | 422 | Malformed JSON or schema/unsigned-request violation | `invalid_request` / `Invalid request.` |
 | 503 | Dependency, key, or usable signer state unavailable | `signer_unavailable` / `Signer unavailable.`; `auth_unavailable` / `Authentication unavailable.` |
 | 500 | Unexpected internal error | `internal_error` / `Internal error.` |

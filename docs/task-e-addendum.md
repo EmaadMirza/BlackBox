@@ -122,17 +122,17 @@ generic handler:
 
 | Exception | Sanitized envelope | Current mapping evidence |
 | --- | --- | --- |
-| `HistoryIntegrityError` (`ValueError`) | HTTP 503, `{"code":"signer_unavailable","message":"Signer unavailable."}` | `services/signer/main.py`: `except (OSError, ValueError)` |
-| `HistorySourceError` (`OSError`) | HTTP 503, `{"code":"signer_unavailable","message":"Signer unavailable."}` | Same `OSError` branch |
-| `OutcomeConflictError` (`ValueError`) | HTTP 503, `{"code":"signer_unavailable","message":"Signer unavailable."}` | Same `ValueError` branch |
-| `OutcomeIndexError` (`ValueError`) | HTTP 503, `{"code":"signer_unavailable","message":"Signer unavailable."}` | Same `ValueError` branch |
+| `HistoryIntegrityError` (`ValueError`) | HTTP 409, `{"code":"history_integrity","message":"History evidence failed integrity validation."}` | Explicit branch in `services/signer/main.py` |
+| `HistorySourceError` (`OSError`) | HTTP 503, `{"code":"signer_unavailable","message":"Signer unavailable."}` | Explicit branch in `services/signer/main.py` |
+| `OutcomeConflictError` (`ValueError`) | HTTP 409, `{"code":"outcome_conflict","message":"The intent already has a conflicting outcome."}` | Explicit branch in `services/signer/main.py` |
+| `OutcomeIndexError` (`ValueError`) | HTTP 409, `{"code":"outcome_index_invalid","message":"Signer outcome state is invalid."}` | Explicit branch in `services/signer/main.py` |
 
-Thus all four are sanitized and exception details are not exposed. There are
-existing HTTP tests for generic storage failures and unexpected failures, but
-there is no named-exception `/seal` test for each of these four Task C classes.
-Because this addendum is design-only, no tests are added here. Before Task E
-implementation, add a focused parameterized HTTP test for the four classes
-without modifying the existing tests.
+Thus all four are sanitized and exception details are not exposed. `503` is
+reserved for the retryable history-source availability failure; the three
+integrity/conflict/state failures use `409` so callers do not blindly retry.
+The new parameterized coverage is in
+`tests/unit/test_signer_task_c_error_mapping.py`; existing tests were not
+modified.
 
 ## Task E implementation gate
 
