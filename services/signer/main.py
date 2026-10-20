@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from fastapi import Depends, FastAPI, Request
+from pydantic import ValidationError
 
 from libs.blackbox_core import schemas
 from libs.blackbox_core.canonical import loads
@@ -11,7 +12,7 @@ from libs.blackbox_core.schemas import SealedEntry, parse_entry
 from services.signer.auth import SignerHTTPError, install_error_handlers, require_bearer
 from services.signer.epoch_manager import EpochUnavailableError
 from services.signer.history import HistoryIntegrityError, HistorySourceError, OutcomeConflictError
-from services.signer.http_contract import HEALTH_PATH, SEAL_PATH
+from services.signer.http_contract import ATTEST_PATH, HEALTH_PATH, SEAL_PATH, AttestRequest
 from services.signer.sealer import SignerSealer
 from services.signer.state import OutcomeIndexError, epoch_metadata_exists
 
@@ -22,6 +23,7 @@ def create_app(*, sealer: SignerSealer | None = None) -> FastAPI:
     install_error_handlers(app)
     app.add_api_route(HEALTH_PATH, health, methods=["GET"])
     app.add_api_route(SEAL_PATH, seal_http, methods=["POST"])
+    app.add_api_route(ATTEST_PATH, attest_http, methods=["POST"])
     return app
 
 
@@ -52,7 +54,7 @@ async def seal_http(request: Request, _: None = Depends(require_bearer)) -> Seal
 
     try:
         candidate = parse_entry(loads(await request.body()))
-    except (RecursionError, TypeError, ValueError, UnicodeDecodeError) as exc:
+    except (RecursionError, TypeError, ValueError, UnicodeDecodeError, ValidationError) as exc:
         raise SignerHTTPError(422, "invalid_request", "Invalid request.") from exc
 
     try:
@@ -82,6 +84,24 @@ async def seal_http(request: Request, _: None = Depends(require_bearer)) -> Seal
     except SignerRuleError as exc:
         raise SignerHTTPError(409, "rule_conflict", "Request conflicts with signer rules.") from exc
     except (OSError, ValueError) as exc:
+        raise SignerHTTPError(503, "signer_unavailable", "Signer unavailable.") from exc
+    except Exception as exc:
+        raise SignerHTTPError(500, "internal_error", "Internal error.") from exc
+
+
+async def attest_http(request: Request, _: None = Depends(require_bearer)) -> dict:
+    signer = getattr(request.app.state, "sealer", None)
+    if signer is None:
+        raise SignerHTTPError(503, "signer_unavailable", "Signer unavailable.")
+    try:
+        payload = AttestRequest.model_validate(loads(await request.body()))
+    except (RecursionError, TypeError, ValueError, UnicodeDecodeError, ValidationError) as exc:
+        raise SignerHTTPError(422, "invalid_request", "Invalid request.") from exc
+    try:
+        return signer.attest(payload.intent_seq).model_dump()
+    except (SignerRuleError, HistoryIntegrityError) as exc:
+        raise SignerHTTPError(409, "rule_conflict", "Request conflicts with signer rules.") from exc
+    except (EpochUnavailableError, HistorySourceError, OSError, ValueError) as exc:
         raise SignerHTTPError(503, "signer_unavailable", "Signer unavailable.") from exc
     except Exception as exc:
         raise SignerHTTPError(500, "internal_error", "Internal error.") from exc

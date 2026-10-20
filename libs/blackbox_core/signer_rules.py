@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from typing import Protocol
 
 from libs.blackbox_core.epochs import in_window
 from libs.blackbox_core.errors import SignerRuleError
@@ -23,6 +24,10 @@ class SignerState:
     caller: str = "gateway"
     intents: dict[int, Intent] = field(default_factory=dict)
     outcomes: dict[int, Outcome] = field(default_factory=dict)
+
+
+class CheckpointEvidence(Protocol):
+    def covers(self, intent_seq: int) -> bool: ...
 
 
 def check_seal_request(state: SignerState, candidate: Entry) -> None:
@@ -100,7 +105,30 @@ def validate_attest(
         requested_digest,
     ):
         raise SignerRuleError("attestation digest mismatch")
-    if intent.status != "ready":
-        raise SignerRuleError("intent is pending approval")
+    if intent.status != "ready" or intent.policy.decision == "block":
+        raise SignerRuleError("intent is blocked or pending approval")
     if requires_witness and (witnessed_latest_seq is None or witnessed_latest_seq < intent.seq):
         raise SignerRuleError("intent lacks witnessed coverage")
+
+
+def intent_requires_witness(intent: Intent) -> bool:
+    policy = intent.policy
+    severity = getattr(policy, "severity", None)
+    if not isinstance(severity, str) or not severity:
+        return True
+    return severity.lower() == "high" or policy.decision == "require_approval"
+
+
+def check_attest_request(
+    intent: Intent,
+    requested_body_digest: str | None,
+    prior_digest: str | None,
+    checkpoint_evidence: CheckpointEvidence | None,
+) -> None:
+    digest = intent.action.body_digest if requested_body_digest is None else requested_body_digest
+    if prior_digest not in (None, digest):
+        raise SignerRuleError("attestation digest mismatch")
+    validate_attest(intent, digest, prior_digest, False, None)
+    if intent_requires_witness(intent):
+        if checkpoint_evidence is None or not checkpoint_evidence.covers(intent.seq):
+            raise SignerRuleError("intent lacks witnessed coverage")

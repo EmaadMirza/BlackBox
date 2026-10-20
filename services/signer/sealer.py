@@ -8,14 +8,21 @@ the operation is retained only by this signer-owned object.
 from __future__ import annotations
 
 from collections.abc import Callable
+from datetime import timedelta
 
 from libs.blackbox_core import sealing
+from libs.blackbox_core.attestation import build_attestation
 from libs.blackbox_core.chain import entry_hash
 from libs.blackbox_core.crypto import SigningOperation
-from libs.blackbox_core.encoding import decode_hash, parse_timestamp
+from libs.blackbox_core.encoding import decode_hash, format_timestamp, parse_timestamp
 from libs.blackbox_core.errors import SignerRuleError
 from libs.blackbox_core.schemas import Intent, Outcome, SealedEntry, parse_entry
-from libs.blackbox_core.signer_rules import SignerState, check_seal_request
+from libs.blackbox_core.signer_rules import (
+    CheckpointEvidence,
+    SignerState,
+    check_attest_request,
+    check_seal_request,
+)
 from services.signer import state
 from services.signer.clock import system_utc_now
 from services.signer.epoch_manager import EpochManager, EpochUnavailableError, RolloverPlan
@@ -80,6 +87,7 @@ class SignerSealer:
         self._history_source = history_source
         self._epoch_manager = epoch_manager
         self._last_rollover_entries: tuple[SealedEntry, ...] = ()
+        self._attested_digests: dict[int, str] = {}
 
     def seal_with_rollover(self, candidate: object) -> tuple[tuple[SealedEntry, ...], SealedEntry]:
         sealed = self.seal(candidate)
@@ -231,6 +239,40 @@ class SignerSealer:
                 sealed.body.seq, sealed_body_hash, sealed.body.epoch_id, self._log_id
             )
         return sealed
+
+    def attest(
+        self,
+        intent_seq: int,
+        requested_body_digest: str | None = None,
+        checkpoint_evidence: CheckpointEvidence | None = None,
+    ):
+        if type(intent_seq) is not int or intent_seq < 0 or self._history_source is None:
+            raise SignerRuleError("intent unavailable")
+        try:
+            record = self._history_source.get_intent(self._log_id, intent_seq)
+            intent_entry = verify_history_record(record, self._log_id, target_seq=intent_seq)
+        except (HistorySourceError, HistoryIntegrityError) as exc:
+            raise SignerRuleError("intent unavailable") from exc
+        if not isinstance(intent_entry.body, Intent):
+            raise SignerRuleError("intent unavailable")
+        prior_digest = self._attested_digests.get(intent_seq)
+        check_attest_request(
+            intent_entry.body, requested_body_digest, prior_digest, checkpoint_evidence
+        )
+        now = self._clock()
+        issued = parse_timestamp(now)
+        expires = format_timestamp(issued + timedelta(seconds=30))
+        if self._epoch_manager is not None:
+            if self._epoch_manager.degraded:
+                raise EpochUnavailableError("attestation key unavailable")
+            operation = self._epoch_manager.signing_operation
+        else:
+            operation = self._signing_operation
+        if operation is None:
+            raise EpochUnavailableError("attestation key unavailable")
+        attestation = build_attestation(intent_entry.body, now, expires, operation)
+        self._attested_digests[intent_seq] = intent_entry.body.action.body_digest
+        return attestation
 
     def _prepare_rollover(
         self,
