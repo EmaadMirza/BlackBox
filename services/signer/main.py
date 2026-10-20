@@ -20,7 +20,7 @@ def create_app(*, sealer: SignerSealer | None = None) -> FastAPI:
     app.state.sealer = sealer
     install_error_handlers(app)
     app.add_api_route(HEALTH_PATH, health, methods=["GET"], response_model=HealthResponse)
-    app.add_api_route(SEAL_PATH, seal_http, methods=["POST"], response_model=SealedEntry)
+    app.add_api_route(SEAL_PATH, seal_http, methods=["POST"])
     return app
 
 
@@ -41,7 +41,13 @@ async def seal_http(request: Request, _: None = Depends(require_bearer)) -> Seal
         raise SignerHTTPError(422, "invalid_request", "Invalid request.") from exc
 
     try:
-        return signer.seal(candidate)
+        if hasattr(signer, "seal_with_rollover"):
+            rollover_entries, sealed = signer.seal_with_rollover(candidate)
+            response = sealed.model_dump()
+            if rollover_entries:
+                response["rollover_entries"] = [entry.model_dump() for entry in rollover_entries]
+            return response
+        return signer.seal(candidate).model_dump()
     except HistorySourceError as exc:
         raise SignerHTTPError(503, "signer_unavailable", "Signer unavailable.") from exc
     except HistoryIntegrityError as exc:

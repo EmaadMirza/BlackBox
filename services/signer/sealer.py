@@ -18,6 +18,7 @@ from libs.blackbox_core.schemas import Intent, Outcome, SealedEntry, parse_entry
 from libs.blackbox_core.signer_rules import SignerState, check_seal_request
 from services.signer import state
 from services.signer.clock import system_utc_now
+from services.signer.epoch_manager import EpochManager, RolloverPlan
 from services.signer.history import (
     HistoryIntegrityError,
     HistorySource,
@@ -52,6 +53,7 @@ class SignerSealer:
         rate_cap: int = 1000,
         epoch_id: int | None = None,
         history_source: HistorySource | None = None,
+        epoch_manager: EpochManager | None = None,
     ) -> None:
         if epoch_id is not None and (type(epoch_id) is not int or epoch_id < 0):
             raise ValueError("epoch_id must be a non-negative integer")
@@ -76,6 +78,12 @@ class SignerSealer:
         self._signing_operation = signing_operation
         self._rate_limiter = DurableRateLimiter()
         self._history_source = history_source
+        self._epoch_manager = epoch_manager
+        self._last_rollover_entries: tuple[SealedEntry, ...] = ()
+
+    def seal_with_rollover(self, candidate: object) -> tuple[tuple[SealedEntry, ...], SealedEntry]:
+        sealed = self.seal(candidate)
+        return self._last_rollover_entries, sealed
 
     def seal(self, candidate: object) -> SealedEntry:
         """Validate, sign, durably advance, and return one gateway entry.
@@ -89,13 +97,34 @@ class SignerSealer:
         parse_timestamp(now)
         last_seq, last_hash, durable_epoch_id = state.load_state(self._log_id)
         outcome_index = state.load_outcome_index(self._log_id)
+        self._last_rollover_entries = ()
+        if self._epoch_manager is not None:
+            if self._epoch_manager.degraded:
+                raise OSError("signer requires epoch recovery")
+            if self._epoch_manager.due(now):
+                plan = self._prepare_rollover(now, last_seq, last_hash, outcome_index)
+                self._epoch_manager.commit_rollover(plan)
+                self._last_rollover_entries = (plan.end, plan.start)
+                last_seq = plan.start.body.seq
+                last_hash = entry_hash(plan.start.body)
+                durable_epoch_id = plan.start.body.epoch_id
+                outcome_index = state.load_outcome_index(self._log_id)
+            epoch_certificate_id = self._epoch_manager.certificate_id
+            signing_operation = self._epoch_manager.signing_operation
+        else:
+            epoch_certificate_id = self._epoch_certificate_id
+            signing_operation = self._signing_operation
         try:
             parsed_candidate = parse_entry(candidate)
         except (TypeError, ValueError) as exc:
             raise SignerRuleError("schema invalid") from exc
         if parsed_candidate.log_id != self._log_id:
             raise SignerRuleError("wrong log identity")
-        if self._epoch_id is not None and durable_epoch_id != self._epoch_id:
+        if (
+            self._epoch_manager is None
+            and self._epoch_id is not None
+            and durable_epoch_id != self._epoch_id
+        ):
             raise SignerRuleError("wrong epoch identity")
 
         intents: dict[int, Intent] = {}
@@ -148,7 +177,7 @@ class SignerSealer:
             last_seq=last_seq,
             last_hash=last_hash,
             epoch_id=durable_epoch_id,
-            epoch_certificate_id=self._epoch_certificate_id,
+            epoch_certificate_id=epoch_certificate_id,
             valid_from=self._valid_from,
             valid_until=self._valid_until,
             now=now,
@@ -164,7 +193,7 @@ class SignerSealer:
         # durable reservation is committed immediately before the signing path
         # and is never refunded, even if signing or chain persistence fails.
         self._rate_limiter.reserve(now, self._rate_cap)
-        sealed = sealing.seal(parsed_candidate, self._signing_operation)
+        sealed = sealing.seal(parsed_candidate, signing_operation)
         sealed_body_hash = entry_hash(sealed.body)
 
         # The state write is deliberately the final operation.  The existing
@@ -184,6 +213,30 @@ class SignerSealer:
                 sealed.body.seq, sealed_body_hash, sealed.body.epoch_id, self._log_id
             )
         return sealed
+
+    def _prepare_rollover(
+        self,
+        now: str,
+        last_seq: int,
+        last_hash: str,
+        outcome_index: dict[int, str],
+    ) -> RolloverPlan:
+        assert self._epoch_manager is not None
+        try:
+            plan = self._epoch_manager.prepare_rollover(
+                last_seq, last_hash, self._epoch_manager.last_timestamp
+            )
+            state.persist_state(
+                plan.start.body.seq,
+                entry_hash(plan.start.body),
+                plan.start.body.epoch_id,
+                self._log_id,
+                outcome_index,
+            )
+            return plan
+        except BaseException:
+            self._epoch_manager.fail_closed()
+            raise
 
 
 # A short compatibility name for callers that refer to the object simply as a

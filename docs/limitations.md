@@ -64,6 +64,17 @@ remain incomplete, and G3/G4 acceptance tests are expected-failure placeholders.
 - The proposed Option D issuance journal protects against crashes and operator
   error only, not a malicious signer host; witness quorum remains the defence
   against journal rewriting or host equivocation.
+- Task R's development directory adapter loads the intermediate private key into
+  the signer process; production must replace it with KMS/HSM custody. Python
+  memory cannot guarantee private-key zeroization.
+- Scheduled epoch rollover is checked synchronously at the start of `seal()` only.
+  An idle signer may retain an epoch key beyond its validity window until the next
+  request; the planned heartbeat timer in Task K will trigger rollover while idle.
+- During rollover, `epoch_end` carries the nominal window-end timestamp rather than
+  wall-clock signing time; the old key therefore signs one final entry after
+  wall-clock expiry. A lost rollover response means entries were issued but
+  undelivered; Task E2b's issuance journal and Task L ledger delivery must reconcile
+  that case.
 - Source wording about expired epoch keys must distinguish historical verification
   of valid in-window signatures from use of an old key for new out-of-window data.
 - E6's partition model does not specify whether heartbeat traffic is also blocked;
