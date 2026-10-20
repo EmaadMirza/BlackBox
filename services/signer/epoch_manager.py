@@ -38,6 +38,10 @@ class IntermediateSigner(Protocol):
     def verify_epoch_certificate(self, certificate: EpochCertificate) -> bool: ...
 
 
+class EpochUnavailableError(OSError):
+    """The signer has no usable epoch key and requires a new epoch."""
+
+
 @dataclass(frozen=True)
 class EpochRuntime:
     certificate: EpochCertificate
@@ -68,6 +72,11 @@ class InMemoryIntermediateSigner:
     def sign_epoch_certificate(self, certificate: EpochCertificate) -> EpochCertificate:
         if certificate.log_id != self.certificate.log_id:
             raise ValueError("intermediate log identity mismatch")
+        if (
+            certificate.valid_from < self.certificate.valid_from
+            or certificate.valid_until > self.certificate.valid_until
+        ):
+            raise ValueError("intermediate certificate is expired or unavailable")
         signed = build_epoch_certificate(
             certificate.epoch_id,
             certificate.epoch_public_key,
@@ -93,10 +102,14 @@ class InMemoryIntermediateSigner:
 class DirectoryIntermediateSigner(InMemoryIntermediateSigner):
     """Development-only loader for the output of ``tools/ceremony.py``."""
 
-    def __init__(self, directory: Path, root_public_key: bytes) -> None:
+    def __init__(
+        self, directory: Path, root_public_key: bytes, expected_log_id: str | None = None
+    ) -> None:
         certificate = IntermediateCertificate.model_validate(
             json.loads((directory / "intermediate.json").read_text(encoding="utf-8"))
         )
+        if expected_log_id is not None and certificate.log_id != expected_log_id:
+            raise ValueError("intermediate certificate log identity mismatch")
         key_bytes = (directory / "intermediate.dev-private.pem").read_bytes()
         operation = serialization.load_pem_private_key(key_bytes, password=None)
         if not isinstance(operation, Ed25519PrivateKey):
@@ -140,6 +153,19 @@ class EpochManager:
     @property
     def certificate_id(self) -> str:
         return certificate_id(self.certificate)
+
+    def metadata(self) -> dict[str, object]:
+        return self.metadata_for(self.runtime)
+
+    def metadata_for(self, runtime: EpochRuntime) -> dict[str, object]:
+        return {
+            "format_version": "1",
+            "log_id": self.log_id,
+            "epoch_id": runtime.certificate.epoch_id,
+            "epoch_certificate": runtime.certificate.model_dump(),
+            "valid_from": runtime.certificate.valid_from,
+            "valid_until": runtime.certificate.valid_until,
+        }
 
     def due(self, now: str) -> bool:
         current = parse_timestamp(now)

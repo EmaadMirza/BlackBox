@@ -17,7 +17,9 @@ _STATE_FIELDS = frozenset({"last_seq", "last_hash", "epoch_id", "log_id"})
 _MARKER_SUFFIX = ".commit"
 _INITIALIZED_SUFFIX = ".initialized"
 _OUTCOME_SUFFIX = ".outcomes.json"
+_EPOCH_SUFFIX = ".epoch.json"
 OUTCOME_INDEX_FORMAT_VERSION = "1"
+EPOCH_METADATA_FORMAT_VERSION = "1"
 _OUTCOME_FIELDS = frozenset({"format_version", "log_id", "outcomes"})
 
 
@@ -37,6 +39,15 @@ def _initialized_path(path: Path) -> Path:
 def _outcome_index_path(path: Path | None = None) -> Path:
     path = _state_path() if path is None else path
     return path.with_name(f"{path.name}{_OUTCOME_SUFFIX}")
+
+
+def _epoch_metadata_path(path: Path | None = None) -> Path:
+    path = _state_path() if path is None else path
+    return path.with_name(f"{path.name}{_EPOCH_SUFFIX}")
+
+
+def epoch_metadata_exists() -> bool:
+    return _epoch_metadata_path().exists()
 
 
 def _reject_duplicate_fields(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
@@ -189,6 +200,48 @@ def load_outcome_index(expected_log_id: str) -> dict[int, str]:
         raise OutcomeIndexError("outcome index is malformed") from exc
 
 
+def load_epoch_metadata(expected_log_id: str) -> dict[str, Any]:
+    """Load versioned public epoch metadata; private key material is never accepted."""
+
+    path = _epoch_metadata_path()
+    try:
+        with path.open("r", encoding="utf-8") as stream:
+            document = json.load(
+                stream,
+                object_pairs_hook=_reject_duplicate_fields,
+                parse_constant=_reject_json_constant,
+            )
+    except (OSError, UnicodeDecodeError, ValueError, json.JSONDecodeError) as exc:
+        raise ValueError("epoch metadata is unreadable or corrupt") from exc
+    required = {
+        "format_version",
+        "log_id",
+        "epoch_id",
+        "epoch_certificate",
+        "valid_from",
+        "valid_until",
+    }
+    if type(document) is not dict or set(document) != required:
+        raise ValueError("epoch metadata fields are invalid")
+    if document["format_version"] != EPOCH_METADATA_FORMAT_VERSION:
+        raise ValueError("epoch metadata format version is unsupported")
+    if document["log_id"] != expected_log_id:
+        raise ValueError("epoch metadata log identity does not match configuration")
+    if type(document["epoch_id"]) is not int or document["epoch_id"] < 0:
+        raise ValueError("epoch metadata epoch id is invalid")
+    from libs.blackbox_core.schemas import EpochCertificate
+
+    certificate = EpochCertificate.model_validate(document["epoch_certificate"])
+    if certificate.log_id != expected_log_id or certificate.epoch_id != document["epoch_id"]:
+        raise ValueError("epoch metadata certificate identity is invalid")
+    if (
+        certificate.valid_from != document["valid_from"]
+        or certificate.valid_until != document["valid_until"]
+    ):
+        raise ValueError("epoch metadata window is invalid")
+    return document
+
+
 def _fsync_directory(directory: Path) -> None:
     directory_fd = os.open(directory, os.O_RDONLY)
     try:
@@ -203,6 +256,7 @@ def persist_state(
     epoch_id: int,
     log_id: str,
     outcome_index: Mapping[int, str] | None = None,
+    epoch_metadata: Mapping[str, Any] | None = None,
 ) -> None:
     """Persist signer state with a detectable pre-commit marker."""
 
@@ -231,6 +285,7 @@ def persist_state(
         raise OSError(f"signer state parent is not a directory: {parent}")
 
     index_path = _outcome_index_path(path)
+    epoch_path = _epoch_metadata_path(path)
     initialized = _initialized_path(path)
     if outcome_index is None:
         if path.exists() or initialized.exists():
@@ -286,6 +341,17 @@ def persist_state(
         separators=(",", ":"),
         sort_keys=True,
     )
+    epoch_payload = None
+    if epoch_metadata is not None:
+        epoch_document = dict(epoch_metadata)
+        if epoch_document.get("format_version") != EPOCH_METADATA_FORMAT_VERSION:
+            raise ValueError("epoch metadata format version is unsupported")
+        if epoch_document.get("log_id") != log_id:
+            raise ValueError("epoch metadata log identity does not match configuration")
+        load_epoch_metadata_document = epoch_document
+        epoch_payload = json.dumps(
+            load_epoch_metadata_document, ensure_ascii=True, separators=(",", ":"), sort_keys=True
+        )
     file_descriptor, temporary_name = tempfile.mkstemp(
         prefix=f".{path.name}.", suffix=".tmp", dir=parent
     )
@@ -294,6 +360,13 @@ def persist_state(
         prefix=f".{index_path.name}.", suffix=".tmp", dir=parent
     )
     index_open_descriptor: int | None = index_descriptor
+    epoch_temporary_name = ""
+    epoch_open_descriptor: int | None = None
+    if epoch_payload is not None:
+        epoch_descriptor, epoch_temporary_name = tempfile.mkstemp(
+            prefix=f".{epoch_path.name}.", suffix=".tmp", dir=parent
+        )
+        epoch_open_descriptor = epoch_descriptor
     try:
         os.fchmod(file_descriptor, 0o600)
         with os.fdopen(file_descriptor, "w", encoding="utf-8") as temporary_file:
@@ -307,10 +380,20 @@ def persist_state(
             index_file.write(index_payload)
             index_file.flush()
             os.fsync(index_file.fileno())
+        if epoch_payload is not None and epoch_open_descriptor is not None:
+            os.fchmod(epoch_open_descriptor, 0o600)
+            with os.fdopen(epoch_open_descriptor, "w", encoding="utf-8") as epoch_file:
+                epoch_open_descriptor = None
+                epoch_file.write(epoch_payload)
+                epoch_file.flush()
+                os.fsync(epoch_file.fileno())
         os.replace(temporary_name, path)
         temporary_name = ""
         os.replace(index_temporary_name, index_path)
         index_temporary_name = ""
+        if epoch_payload is not None:
+            os.replace(epoch_temporary_name, epoch_path)
+            epoch_temporary_name = ""
         _fsync_directory(parent)
         initialized = _initialized_path(path)
         if not initialized.exists():
@@ -336,5 +419,12 @@ def persist_state(
         if index_temporary_name:
             try:
                 os.unlink(index_temporary_name)
+            except FileNotFoundError:
+                pass
+        if epoch_open_descriptor is not None:
+            os.close(epoch_open_descriptor)
+        if epoch_temporary_name:
+            try:
+                os.unlink(epoch_temporary_name)
             except FileNotFoundError:
                 pass
