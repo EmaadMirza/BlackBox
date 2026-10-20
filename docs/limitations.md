@@ -77,10 +77,12 @@ remain incomplete, and G3/G4 acceptance tests are expected-failure placeholders.
   that case. Power-loss recovery, HSM/KMS custody, and Docker deployment behavior
   remain unverified. Lost-response entries and durable reconciliation remain pending
   E2b, and an idle signer may retain an expired epoch key until its next request.
-- A1 attestation currently keeps prior attested digests in the in-process signer
-  object; versioned atomic persistence and restart recovery for that record remain
-  pending. The real witnessed-checkpoint source is also not implemented, so
-  high-risk attestations fail closed except through test-only evidence.
+- A1 attestation does not require a persisted prior-attested-digest record for
+  uniqueness: the digest is cryptographically bound to the sealed intent. After a
+  restart, the signer may re-issue an attestation for that same digest with a fresh
+  expiry. The real witnessed-checkpoint source is not implemented, so high-risk
+  attestations fail closed except through test-only evidence; provider-side
+  attestation verification remains pending.
 - Source wording about expired epoch keys must distinguish historical verification
   of valid in-window signatures from use of an old key for new out-of-window data.
 - E6's partition model does not specify whether heartbeat traffic is also blocked;

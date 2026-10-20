@@ -88,6 +88,7 @@ class SignerSealer:
         self._epoch_manager = epoch_manager
         self._last_rollover_entries: tuple[SealedEntry, ...] = ()
         self._attested_digests: dict[int, str] = {}
+        self._sealed_intents: dict[int, str] = {}
 
     def seal_with_rollover(self, candidate: object) -> tuple[tuple[SealedEntry, ...], SealedEntry]:
         sealed = self.seal(candidate)
@@ -238,6 +239,8 @@ class SignerSealer:
             state.persist_state(
                 sealed.body.seq, sealed_body_hash, sealed.body.epoch_id, self._log_id
             )
+        if isinstance(sealed.body, Intent):
+            self._sealed_intents[sealed.body.seq] = sealed_body_hash
         return sealed
 
     def attest(
@@ -255,6 +258,9 @@ class SignerSealer:
             raise SignerRuleError("intent unavailable") from exc
         if not isinstance(intent_entry.body, Intent):
             raise SignerRuleError("intent unavailable")
+        recorded_hash = self._sealed_intents.get(intent_seq)
+        if recorded_hash is None or recorded_hash != entry_hash(intent_entry.body):
+            raise SignerRuleError("intent was not sealed by this signer")
         prior_digest = self._attested_digests.get(intent_seq)
         check_attest_request(
             intent_entry.body, requested_body_digest, prior_digest, checkpoint_evidence

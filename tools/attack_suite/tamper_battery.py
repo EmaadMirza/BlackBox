@@ -5,9 +5,12 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+from libs.blackbox_core.attestation import build_attestation, verify_attestation
 from libs.blackbox_core.chain import entry_hash, verify_chain
 from libs.blackbox_core.evidence import Bundle, PinnedKeys
 from libs.blackbox_core.schemas import SealedEntry, parse_entry
+from libs.blackbox_core.signing import verify_structure
+from tests.unit.test_epochs_rules import certificates, request_pair
 from tools.attack_suite.fixture import build_demo
 from tools.verifier.verify import verify_evidence
 
@@ -67,6 +70,29 @@ def variants(bundle: Bundle) -> dict[str, Bundle]:
     return cases
 
 
+def attestation_variants() -> dict[str, bool]:
+    """Return consumer outcomes for independent attestation mutations."""
+    _root, key, _epoch, _intermediate, _certificate = certificates()
+    _state, intent, _outcome = request_pair()
+    valid = build_attestation(
+        intent,
+        "2026-01-01T00:00:00.000Z",
+        "2026-01-01T00:00:30.000Z",
+        key,
+    )
+    public_key = key.public_key().public_bytes_raw()
+    different_digest = valid.model_copy(update={"body_digest": "sha256:" + "f" * 64})
+    expired = verify_attestation(valid, public_key, "2026-01-01T00:00:30.000Z")
+    wrong_label = verify_structure(valid, public_key, "entry")
+    return {
+        "attestation_different_digest": verify_attestation(
+            different_digest, public_key, "2026-01-01T00:00:01.000Z"
+        ),
+        "attestation_expired": expired,
+        "attestation_wrong_label": wrong_label,
+    }
+
+
 def evaluate(bundle: Bundle, pins: PinnedKeys) -> dict[str, object]:
     honest = verify_evidence(bundle, pins)
     if honest.verdict != "VERIFIED":
@@ -97,6 +123,13 @@ def evaluate(bundle: Bundle, pins: PinnedKeys) -> dict[str, object]:
                 "affected_sequences": [e.seq for e in failed],
             }
         )
+    attestation_cases = attestation_variants()
+    if any(attestation_cases.values()):
+        raise AssertionError(attestation_cases)
+    rows.extend(
+        {"variant": name, "verdict": "REJECTED", "affected_sequences": []}
+        for name in attestation_cases
+    )
     rehashed = cases["edit_and_rehash"]
     unsigned_accepts = (
         verify_chain([SealedEntry.model_validate(e) for e in rehashed.entries]) is None
