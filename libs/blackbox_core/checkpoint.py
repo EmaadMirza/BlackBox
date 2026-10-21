@@ -15,6 +15,7 @@ def build_checkpoint(
     latest_seq: int,
     epoch_id: int,
     signer_timestamp: str,
+    latest_entry_hash: str = "sha256:" + "0" * 64,
 ) -> Checkpoint:
     checkpoint = Checkpoint(
         log_id=log_id,
@@ -23,6 +24,7 @@ def build_checkpoint(
         latest_seq=latest_seq,
         epoch_id=epoch_id,
         signer_timestamp=signer_timestamp,
+        latest_entry_hash=latest_entry_hash,
     )
     if latest_seq != tree_size - 1:
         raise ValueError("checkpoint size and sequence disagree")

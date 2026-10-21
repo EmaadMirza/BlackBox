@@ -16,3 +16,7 @@ class VerificationError(BlackBoxError):
 
 class SignerRuleError(BlackBoxError):
     """A candidate violates a signer rule."""
+
+    def __init__(self, message: str, *, code: str = "rule_conflict") -> None:
+        super().__init__(message)
+        self.code = code

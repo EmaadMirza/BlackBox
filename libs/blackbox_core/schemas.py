@@ -293,6 +293,7 @@ class Checkpoint(StrictModel):
     latest_seq: Count
     epoch_id: Count
     signer_timestamp: Timestamp
+    latest_entry_hash: Hash = "sha256:" + "0" * 64
     signature: Signature = ""
 
 

@@ -83,6 +83,14 @@ remain incomplete, and G3/G4 acceptance tests are expected-failure placeholders.
   expiry. The real witnessed-checkpoint source is not implemented, so high-risk
   attestations fail closed except through test-only evidence; provider-side
   attestation verification remains pending.
+- A1b report: `attest()` obtains the intent from the authenticated history source
+  and requires a matching current-process sealed-intent record. That sealed-intent
+  map is not persisted or rebuilt across signer restart, so an intent sealed before
+  restart cannot currently be attested after restart; this is a known gap.
+- K1a defaults: the ledger supplies checkpoint tree metadata; the signer checks it
+  against its own durable last-sealed state but does not rebuild the Merkle tree.
+  Root correctness is delegated to witnesses and the offline verifier. Pure
+  checkpoint request rules do not implement HTTP, persistence, or signing.
 - Source wording about expired epoch keys must distinguish historical verification
   of valid in-window signatures from use of an old key for new out-of-window data.
 - E6's partition model does not specify whether heartbeat traffic is also blocked;
