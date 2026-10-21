@@ -91,6 +91,11 @@ remain incomplete, and G3/G4 acceptance tests are expected-failure placeholders.
   against its own durable last-sealed state but does not rebuild the Merkle tree.
   Root correctness is delegated to witnesses and the offline verifier. Pure
   checkpoint request rules do not implement HTTP, persistence, or signing.
+- K1b implements signed checkpoint issuance and persists the last checkpoint in a
+  versioned atomic checkpoint sidecar protected by the signer commit marker. The
+  signer still does not rebuild Merkle trees; ledger root construction and witness
+  consistency remain external responsibilities. Real witness and ledger services,
+  HSM/KMS custody, and production power-loss validation remain unproven.
 - Source wording about expired epoch keys must distinguish historical verification
   of valid in-window signatures from use of an old key for new out-of-window data.
 - E6's partition model does not specify whether heartbeat traffic is also blocked;

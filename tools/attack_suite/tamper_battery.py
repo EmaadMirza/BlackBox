@@ -67,6 +67,9 @@ def variants(bundle: Bundle) -> dict[str, Bundle]:
     }
     data["entries"].insert(7, recovery)
     cases["unsigned_recovery_for_deleted_seq_7"] = Bundle.model_validate(data)
+    data = bundle.model_dump()
+    data["checkpoints"][-1]["checkpoint"]["root_hash"] = "sha256:" + "f" * 64
+    cases["modified_checkpoint_root"] = Bundle.model_validate(data)
     return cases
 
 
@@ -110,6 +113,7 @@ def evaluate(bundle: Bundle, pins: PinnedKeys) -> dict[str, object]:
         "skipped_epoch_id": "TAMPERED",
         "swap_signatures": "TAMPERED",
         "unsigned_recovery_for_deleted_seq_7": "TAMPERED",
+        "modified_checkpoint_root": "TAMPERED",
     }
     for name, changed in cases.items():
         report = verify_evidence(changed, pins)

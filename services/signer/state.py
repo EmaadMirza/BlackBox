@@ -13,6 +13,7 @@ from libs.blackbox_core.chain import GENESIS_PREV_HASH
 from libs.blackbox_core.encoding import decode_hash
 
 DEFAULT_STATE_PATH = Path("/var/lib/blackbox/signer/state.json")
+CHECKPOINT_STATE_FORMAT_VERSION = "2"
 _STATE_FIELDS = frozenset({"last_seq", "last_hash", "epoch_id", "log_id"})
 _MARKER_SUFFIX = ".commit"
 _INITIALIZED_SUFFIX = ".initialized"
@@ -125,6 +126,27 @@ def load_state(expected_log_id: str | None = None) -> tuple[int, str, int]:
             raise ValueError("durable state log identity does not match configuration")
     load_outcome_index(log_id)
     return last_seq, last_hash, epoch_id
+
+
+def load_last_checkpoint(expected_log_id: str):
+    path = _state_path().with_name(f"{_state_path().name}.checkpoint.json")
+    if not path.exists():
+        return None
+    with path.open("r", encoding="utf-8") as stream:
+        document = json.load(stream, object_pairs_hook=_reject_duplicate_fields)
+    if set(document) != {"format_version", "log_id", "checkpoint"}:
+        raise ValueError("checkpoint state fields are invalid")
+    if document["format_version"] != CHECKPOINT_STATE_FORMAT_VERSION:
+        raise ValueError("checkpoint state format version is unsupported")
+    if document["log_id"] != expected_log_id:
+        raise ValueError("durable state log identity does not match configuration")
+    from libs.blackbox_core.schemas import Checkpoint
+
+    return (
+        None
+        if document["checkpoint"] is None
+        else Checkpoint.model_validate(document["checkpoint"])
+    )
 
 
 class OutcomeIndexError(ValueError):
@@ -257,6 +279,7 @@ def persist_state(
     log_id: str,
     outcome_index: Mapping[int, str] | None = None,
     epoch_metadata: Mapping[str, Any] | None = None,
+    last_checkpoint: Any = None,
 ) -> None:
     """Persist signer state with a detectable pre-commit marker."""
 
@@ -285,6 +308,7 @@ def persist_state(
         raise OSError(f"signer state parent is not a directory: {parent}")
 
     index_path = _outcome_index_path(path)
+    checkpoint_path = path.with_name(f"{path.name}.checkpoint.json")
     epoch_path = _epoch_metadata_path(path)
     initialized = _initialized_path(path)
     if outcome_index is None:
@@ -362,11 +386,29 @@ def persist_state(
     index_open_descriptor: int | None = index_descriptor
     epoch_temporary_name = ""
     epoch_open_descriptor: int | None = None
+    checkpoint_temporary_name = ""
+    checkpoint_open_descriptor: int | None = None
     if epoch_payload is not None:
         epoch_descriptor, epoch_temporary_name = tempfile.mkstemp(
             prefix=f".{epoch_path.name}.", suffix=".tmp", dir=parent
         )
         epoch_open_descriptor = epoch_descriptor
+    checkpoint_payload = None
+    if last_checkpoint is not None:
+        checkpoint_payload = json.dumps(
+            {
+                "format_version": CHECKPOINT_STATE_FORMAT_VERSION,
+                "log_id": log_id,
+                "checkpoint": last_checkpoint.model_dump(),
+            },
+            ensure_ascii=True,
+            separators=(",", ":"),
+            sort_keys=True,
+        )
+        checkpoint_descriptor, checkpoint_temporary_name = tempfile.mkstemp(
+            prefix=f".{checkpoint_path.name}.", suffix=".tmp", dir=parent
+        )
+        checkpoint_open_descriptor = checkpoint_descriptor
     try:
         os.fchmod(file_descriptor, 0o600)
         with os.fdopen(file_descriptor, "w", encoding="utf-8") as temporary_file:
@@ -387,6 +429,13 @@ def persist_state(
                 epoch_file.write(epoch_payload)
                 epoch_file.flush()
                 os.fsync(epoch_file.fileno())
+        if checkpoint_payload is not None and checkpoint_open_descriptor is not None:
+            os.fchmod(checkpoint_open_descriptor, 0o600)
+            with os.fdopen(checkpoint_open_descriptor, "w", encoding="utf-8") as checkpoint_file:
+                checkpoint_open_descriptor = None
+                checkpoint_file.write(checkpoint_payload)
+                checkpoint_file.flush()
+                os.fsync(checkpoint_file.fileno())
         os.replace(temporary_name, path)
         temporary_name = ""
         os.replace(index_temporary_name, index_path)
@@ -394,6 +443,9 @@ def persist_state(
         if epoch_payload is not None:
             os.replace(epoch_temporary_name, epoch_path)
             epoch_temporary_name = ""
+        if checkpoint_payload is not None:
+            os.replace(checkpoint_temporary_name, checkpoint_path)
+            checkpoint_temporary_name = ""
         _fsync_directory(parent)
         initialized = _initialized_path(path)
         if not initialized.exists():
@@ -426,5 +478,12 @@ def persist_state(
         if epoch_temporary_name:
             try:
                 os.unlink(epoch_temporary_name)
+            except FileNotFoundError:
+                pass
+        if checkpoint_open_descriptor is not None:
+            os.close(checkpoint_open_descriptor)
+        if checkpoint_temporary_name:
+            try:
+                os.unlink(checkpoint_temporary_name)
             except FileNotFoundError:
                 pass

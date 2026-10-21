@@ -12,7 +12,13 @@ from libs.blackbox_core.schemas import SealedEntry, parse_entry
 from services.signer.auth import SignerHTTPError, install_error_handlers, require_bearer
 from services.signer.epoch_manager import EpochUnavailableError
 from services.signer.history import HistoryIntegrityError, HistorySourceError, OutcomeConflictError
-from services.signer.http_contract import ATTEST_PATH, HEALTH_PATH, SEAL_PATH, AttestRequest
+from services.signer.http_contract import (
+    ATTEST_PATH,
+    CHECKPOINT_PATH,
+    HEALTH_PATH,
+    SEAL_PATH,
+    AttestRequest,
+)
 from services.signer.sealer import SignerSealer
 from services.signer.state import OutcomeIndexError, epoch_metadata_exists
 
@@ -24,6 +30,7 @@ def create_app(*, sealer: SignerSealer | None = None) -> FastAPI:
     app.add_api_route(HEALTH_PATH, health, methods=["GET"])
     app.add_api_route(SEAL_PATH, seal_http, methods=["POST"])
     app.add_api_route(ATTEST_PATH, attest_http, methods=["POST"])
+    app.add_api_route(CHECKPOINT_PATH, checkpoint_http, methods=["POST"])
     return app
 
 
@@ -102,6 +109,28 @@ async def attest_http(request: Request, _: None = Depends(require_bearer)) -> di
     except (SignerRuleError, HistoryIntegrityError) as exc:
         raise SignerHTTPError(409, "rule_conflict", "Request conflicts with signer rules.") from exc
     except (EpochUnavailableError, HistorySourceError, OSError, ValueError) as exc:
+        raise SignerHTTPError(503, "signer_unavailable", "Signer unavailable.") from exc
+    except Exception as exc:
+        raise SignerHTTPError(500, "internal_error", "Internal error.") from exc
+
+
+async def checkpoint_http(request: Request, _: None = Depends(require_bearer)) -> dict:
+    signer = getattr(request.app.state, "sealer", None)
+    if signer is None:
+        raise SignerHTTPError(503, "signer_unavailable", "Signer unavailable.")
+    try:
+        payload = schemas.Checkpoint.model_validate(loads(await request.body()))
+        if payload.signature:
+            raise ValueError("signed checkpoint request is not allowed")
+    except (RecursionError, TypeError, ValueError, UnicodeDecodeError, ValidationError) as exc:
+        raise SignerHTTPError(422, "invalid_request", "Invalid request.") from exc
+    try:
+        return signer.checkpoint(payload).model_dump()
+    except SignerRuleError as exc:
+        raise SignerHTTPError(
+            409, getattr(exc, "code", "rule_conflict"), "Request conflicts with signer rules."
+        ) from exc
+    except (EpochUnavailableError, OSError, ValueError) as exc:
         raise SignerHTTPError(503, "signer_unavailable", "Signer unavailable.") from exc
     except Exception as exc:
         raise SignerHTTPError(500, "internal_error", "Internal error.") from exc

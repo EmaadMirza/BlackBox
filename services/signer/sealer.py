@@ -13,10 +13,11 @@ from datetime import timedelta
 from libs.blackbox_core import sealing
 from libs.blackbox_core.attestation import build_attestation
 from libs.blackbox_core.chain import entry_hash
+from libs.blackbox_core.checkpoint import sign_checkpoint
 from libs.blackbox_core.crypto import SigningOperation
 from libs.blackbox_core.encoding import decode_hash, format_timestamp, parse_timestamp
 from libs.blackbox_core.errors import SignerRuleError
-from libs.blackbox_core.schemas import Intent, Outcome, SealedEntry, parse_entry
+from libs.blackbox_core.schemas import Checkpoint, Intent, Outcome, SealedEntry, parse_entry
 from libs.blackbox_core.signer_rules import (
     CheckpointEvidence,
     SignerState,
@@ -213,6 +214,7 @@ class SignerSealer:
             caller="gateway",
             intents=intents,
             outcomes=outcomes,
+            log_id=self._log_id,
         )
         check_seal_request(signer_state, parsed_candidate)
 
@@ -279,6 +281,48 @@ class SignerSealer:
         attestation = build_attestation(intent_entry.body, now, expires, operation)
         self._attested_digests[intent_seq] = intent_entry.body.action.body_digest
         return attestation
+
+    def checkpoint(self, request: object) -> Checkpoint:
+        try:
+            requested = Checkpoint.model_validate(request)
+        except (TypeError, ValueError) as exc:
+            raise SignerRuleError(
+                "checkpoint schema invalid", code="checkpoint_invalid_request"
+            ) from exc
+        last_seq, last_hash, epoch_id = state.load_state(self._log_id)
+        previous = state.load_last_checkpoint(self._log_id)
+        now = self._clock()
+        if requested.signer_timestamp != now:
+            requested = requested.model_copy(update={"signer_timestamp": now})
+        signer_state = SignerState(
+            last_seq=last_seq,
+            last_hash=last_hash,
+            epoch_id=epoch_id,
+            epoch_certificate_id=self._epoch_certificate_id,
+            valid_from=self._valid_from,
+            valid_until=self._valid_until,
+            now=now,
+            log_id=self._log_id,
+        )
+        from libs.blackbox_core.signer_rules import check_checkpoint_request
+
+        check_checkpoint_request(signer_state, previous, requested)
+        operation = (
+            self._epoch_manager.signing_operation
+            if self._epoch_manager is not None
+            else self._signing_operation
+        )
+        if operation is None:
+            raise EpochUnavailableError("checkpoint key unavailable")
+        signed = sign_checkpoint(requested, operation)
+        state.persist_state(
+            last_seq,
+            last_hash,
+            epoch_id,
+            self._log_id,
+            last_checkpoint=signed,
+        )
+        return signed
 
     def _prepare_rollover(
         self,
