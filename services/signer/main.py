@@ -16,6 +16,7 @@ from services.signer.http_contract import (
     ATTEST_PATH,
     CHECKPOINT_PATH,
     HEALTH_PATH,
+    HEARTBEAT_PATH,
     SEAL_PATH,
     AttestRequest,
 )
@@ -31,6 +32,7 @@ def create_app(*, sealer: SignerSealer | None = None) -> FastAPI:
     app.add_api_route(SEAL_PATH, seal_http, methods=["POST"])
     app.add_api_route(ATTEST_PATH, attest_http, methods=["POST"])
     app.add_api_route(CHECKPOINT_PATH, checkpoint_http, methods=["POST"])
+    app.add_api_route(HEARTBEAT_PATH, heartbeat_http, methods=["POST"])
     return app
 
 
@@ -130,6 +132,20 @@ async def checkpoint_http(request: Request, _: None = Depends(require_bearer)) -
         raise SignerHTTPError(
             409, getattr(exc, "code", "rule_conflict"), "Request conflicts with signer rules."
         ) from exc
+    except (EpochUnavailableError, OSError, ValueError) as exc:
+        raise SignerHTTPError(503, "signer_unavailable", "Signer unavailable.") from exc
+    except Exception as exc:
+        raise SignerHTTPError(500, "internal_error", "Internal error.") from exc
+
+
+async def heartbeat_http(request: Request, _: None = Depends(require_bearer)) -> dict:
+    signer = getattr(request.app.state, "sealer", None)
+    if signer is None:
+        raise SignerHTTPError(503, "signer_unavailable", "Signer unavailable.")
+    try:
+        if (await request.body()).strip() not in (b"", b"{}"):
+            raise ValueError("heartbeat request must be empty")
+        return signer.heartbeat().model_dump()
     except (EpochUnavailableError, OSError, ValueError) as exc:
         raise SignerHTTPError(503, "signer_unavailable", "Signer unavailable.") from exc
     except Exception as exc:

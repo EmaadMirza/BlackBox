@@ -16,14 +16,23 @@ from libs.blackbox_core.chain import entry_hash
 from libs.blackbox_core.checkpoint import sign_checkpoint
 from libs.blackbox_core.crypto import SigningOperation
 from libs.blackbox_core.encoding import decode_hash, format_timestamp, parse_timestamp
+from libs.blackbox_core.epochs import in_window
 from libs.blackbox_core.errors import SignerRuleError
-from libs.blackbox_core.schemas import Checkpoint, Intent, Outcome, SealedEntry, parse_entry
+from libs.blackbox_core.schemas import (
+    Checkpoint,
+    Heartbeat,
+    Intent,
+    Outcome,
+    SealedEntry,
+    parse_entry,
+)
 from libs.blackbox_core.signer_rules import (
     CheckpointEvidence,
     SignerState,
     check_attest_request,
     check_seal_request,
 )
+from libs.blackbox_core.signing import sign_structure
 from services.signer import state
 from services.signer.clock import system_utc_now
 from services.signer.epoch_manager import EpochManager, EpochUnavailableError, RolloverPlan
@@ -323,6 +332,39 @@ class SignerSealer:
             last_checkpoint=signed,
         )
         return signed
+
+    def heartbeat(self) -> Heartbeat:
+        last_seq, last_hash, epoch_id = state.load_state(self._log_id)
+        now = self._clock()
+        valid_from = self._valid_from
+        if self._epoch_manager:
+            valid_from = self._epoch_manager.certificate.valid_from
+        valid_until = (
+            self._epoch_manager.certificate.valid_until
+            if self._epoch_manager
+            else self._valid_until
+        )
+        if not in_window(now, valid_from, valid_until):
+            raise EpochUnavailableError("heartbeat epoch unavailable")
+        operation = (
+            self._epoch_manager.signing_operation
+            if self._epoch_manager
+            else self._signing_operation
+        )
+        if operation is None:
+            raise EpochUnavailableError("heartbeat key unavailable")
+        return sign_structure(
+            Heartbeat(
+                log_id=self._log_id,
+                epoch_id=epoch_id,
+                latest_seq=max(last_seq, 0),
+                latest_entry_hash=last_hash,
+                queue_depth=0,
+                signer_timestamp=now,
+            ),
+            operation,
+            "heartbeat",
+        )
 
     def _prepare_rollover(
         self,

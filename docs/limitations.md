@@ -101,6 +101,11 @@ remain incomplete, and G3/G4 acceptance tests are expected-failure placeholders.
   authentication, distinct witness cosignatures, quorum, log binding, and intent
   coverage are checked. No network or witness service is used; production delivery
   of this evidence to the signer is deferred to Task W.
+- K2a adds a signed `POST /heartbeat` operation. It claims only the durable signer
+  state, does not consume the entry rate quota or advance the chain, and is checked
+  against the current epoch window. The witness-side stall/mismatch service remains
+  unimplemented; the pure heartbeat/checkpoint comparison helper is covered only by
+  unit tests.
 - Source wording about expired epoch keys must distinguish historical verification
   of valid in-window signatures from use of an old key for new out-of-window data.
 - E6's partition model does not specify whether heartbeat traffic is also blocked;
