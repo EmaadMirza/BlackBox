@@ -67,9 +67,10 @@ remain incomplete, and G3/G4 acceptance tests are expected-failure placeholders.
 - Task R's development directory adapter loads the intermediate private key into
   the signer process; production must replace it with KMS/HSM custody. Python
   memory cannot guarantee private-key zeroization; key zeroization remains unproven.
-- Scheduled epoch rollover is checked synchronously at the start of `seal()` only.
-  An idle signer may retain an epoch key beyond its validity window until the next
-  request; the planned heartbeat timer in Task K will trigger rollover while idle.
+- K2b removes the idle-key-retention limitation through a cooperative `tick()` that
+  is serialized with `seal()`. It rolls expired epochs before releasing the new
+  runtime and emits a heartbeat after the configured interval. A thin runner is
+  intentionally scheduler-driven rather than thread-based in this scope.
 - During rollover, `epoch_end` carries the nominal window-end timestamp rather than
   wall-clock signing time; the old key therefore signs one final entry after
   wall-clock expiry. A lost rollover response means entries were issued but
@@ -106,6 +107,9 @@ remain incomplete, and G3/G4 acceptance tests are expected-failure placeholders.
   against the current epoch window. The witness-side stall/mismatch service remains
   unimplemented; the pure heartbeat/checkpoint comparison helper is covered only by
   unit tests.
+- Tick-produced rollover entries are returned for delivery but no outbox or ledger
+  delivery path exists yet. They reach the ledger only once Task L delivery is
+  implemented; a production runner must retain them until then.
 - Source wording about expired epoch keys must distinguish historical verification
   of valid in-window signatures from use of an old key for new out-of-window data.
 - E6's partition model does not specify whether heartbeat traffic is also blocked;

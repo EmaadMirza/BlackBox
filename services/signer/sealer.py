@@ -9,6 +9,7 @@ from __future__ import annotations
 
 from collections.abc import Callable
 from datetime import timedelta
+from threading import RLock
 
 from libs.blackbox_core import sealing
 from libs.blackbox_core.attestation import build_attestation
@@ -99,6 +100,9 @@ class SignerSealer:
         self._last_rollover_entries: tuple[SealedEntry, ...] = ()
         self._attested_digests: dict[int, str] = {}
         self._sealed_intents: dict[int, str] = {}
+        self._lock = RLock()
+        self._heartbeat_interval = 5
+        self._last_heartbeat_at = None
 
     def seal_with_rollover(self, candidate: object) -> tuple[tuple[SealedEntry, ...], SealedEntry]:
         sealed = self.seal(candidate)
@@ -111,6 +115,10 @@ class SignerSealer:
         return None
 
     def seal(self, candidate: object) -> SealedEntry:
+        with self._lock:
+            return self._seal_unlocked(candidate)
+
+    def _seal_unlocked(self, candidate: object) -> SealedEntry:
         """Validate, sign, durably advance, and return one gateway entry.
 
         Validate before reserving quota and signing. A signing or persistence
@@ -365,6 +373,32 @@ class SignerSealer:
             operation,
             "heartbeat",
         )
+
+    def tick(self) -> tuple[tuple[SealedEntry, ...], Heartbeat | None]:
+        """Serialize idle rollover and periodic heartbeat emission with sealing."""
+        with self._lock:
+            now = self._clock()
+            rollover: tuple[SealedEntry, ...] = ()
+            if self._epoch_manager is not None:
+                if self._epoch_manager.degraded:
+                    return (), None
+                last_seq, last_hash, _ = state.load_state(self._log_id)
+                if self._epoch_manager.due(now):
+                    plan = self._prepare_rollover(
+                        now, last_seq, last_hash, state.load_outcome_index(self._log_id)
+                    )
+                    self._epoch_manager.commit_rollover(plan)
+                    self._epoch_manager.destroy_runtime_key(plan.old_runtime)
+                    rollover = (plan.end, plan.start)
+            current = parse_timestamp(now)
+            if self._last_heartbeat_at is None:
+                self._last_heartbeat_at = current
+                return rollover, None
+            if current - self._last_heartbeat_at < timedelta(seconds=self._heartbeat_interval):
+                return rollover, None
+            heartbeat = self.heartbeat()
+            self._last_heartbeat_at = current
+            return rollover, heartbeat
 
     def _prepare_rollover(
         self,

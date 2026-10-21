@@ -1,15 +1,20 @@
-"""Signer heartbeat scheduler Scaffold only; no runtime behavior."""
-
-from __future__ import annotations
-
-from libs.blackbox_core import schemas
-
-# TODO(spec §9.2): implement and validate before enabling this module.
+"""Thin cooperative heartbeat tick runner."""
 
 
-async def emit_heartbeat() -> schemas.Heartbeat:
-    raise NotImplementedError("not built")
+class TickRunner:
+    def __init__(self, signer) -> None:
+        self.signer = signer
+        self.stopped = False
+
+    def tick_once(self):
+        if self.stopped:
+            return (), None
+        return self.signer.tick()
+
+    def stop(self) -> None:
+        self.stopped = True
 
 
 async def run(interval_seconds: int = 5) -> None:
-    raise NotImplementedError("not built")
+    del interval_seconds
+    raise NotImplementedError("external scheduler must call TickRunner.tick_once")
