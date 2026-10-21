@@ -96,6 +96,11 @@ remain incomplete, and G3/G4 acceptance tests are expected-failure placeholders.
   signer still does not rebuild Merkle trees; ledger root construction and witness
   consistency remain external responsibilities. Real witness and ledger services,
   HSM/KMS custody, and production power-loss validation remain unproven.
+- K1c now verifies witnessed checkpoint evidence locally before allowing a
+  high-risk attestation: pinned root/intermediate/epoch certificates, witness-set
+  authentication, distinct witness cosignatures, quorum, log binding, and intent
+  coverage are checked. No network or witness service is used; production delivery
+  of this evidence to the signer is deferred to Task W.
 - Source wording about expired epoch keys must distinguish historical verification
   of valid in-window signatures from use of an old key for new out-of-window data.
 - E6's partition model does not specify whether heartbeat traffic is also blocked;
