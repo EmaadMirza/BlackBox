@@ -77,7 +77,9 @@ remain incomplete, and G3/G4 acceptance tests are expected-failure placeholders.
   undelivered; Task E2b's issuance journal and Task L ledger delivery must reconcile
   that case. Power-loss recovery, HSM/KMS custody, and Docker deployment behavior
   remain unverified. Lost-response entries and durable reconciliation remain pending
-  E2b, and an idle signer may retain an expired epoch key until its next request.
+  E2b. K2c removes the frozen-object mutation used by the earlier tick path: after
+  commit, the old runtime is released normally, while the manager's explicit
+  `destroy_current_key()` guard remains available for signer-level key invalidation.
 - A1 attestation does not require a persisted prior-attested-digest record for
   uniqueness: the digest is cryptographically bound to the sealed intent. After a
   restart, the signer may re-issue an attestation for that same digest with a fresh
@@ -110,6 +112,9 @@ remain incomplete, and G3/G4 acceptance tests are expected-failure placeholders.
 - Tick-produced rollover entries are returned for delivery but no outbox or ledger
   delivery path exists yet. They reach the ledger only once Task L delivery is
   implemented; a production runner must retain them until then.
+- `services/signer/heartbeat.py:run()` is now a thin async loop over `TickRunner`.
+  It does not create threads or own signer concurrency; deployment remains
+  responsible for invoking it with the single signer instance.
 - Source wording about expired epoch keys must distinguish historical verification
   of valid in-window signatures from use of an old key for new out-of-window data.
 - E6's partition model does not specify whether heartbeat traffic is also blocked;

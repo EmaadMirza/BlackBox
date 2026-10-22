@@ -1,5 +1,7 @@
 """Thin cooperative heartbeat tick runner."""
 
+import asyncio
+
 
 class TickRunner:
     def __init__(self, signer) -> None:
@@ -15,6 +17,9 @@ class TickRunner:
         self.stopped = True
 
 
-async def run(interval_seconds: int = 5) -> None:
-    del interval_seconds
-    raise NotImplementedError("external scheduler must call TickRunner.tick_once")
+async def run(signer, interval_seconds: int = 5) -> None:
+    """Run cooperative ticks without owning signer concurrency."""
+    runner = TickRunner(signer)
+    while not runner.stopped:
+        runner.tick_once()
+        await asyncio.sleep(interval_seconds)

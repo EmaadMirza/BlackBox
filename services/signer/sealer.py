@@ -388,7 +388,6 @@ class SignerSealer:
                         now, last_seq, last_hash, state.load_outcome_index(self._log_id)
                     )
                     self._epoch_manager.commit_rollover(plan)
-                    self._epoch_manager.destroy_runtime_key(plan.old_runtime)
                     rollover = (plan.end, plan.start)
             current = parse_timestamp(now)
             if self._last_heartbeat_at is None:

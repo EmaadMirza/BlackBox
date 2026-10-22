@@ -284,12 +284,6 @@ class EpochManager:
         operation = self.runtime.signing_operation
         self.runtime = EpochRuntime(self.certificate, _DestroyedSigner(operation))
 
-    @staticmethod
-    def destroy_runtime_key(runtime: EpochRuntime) -> None:
-        object.__setattr__(
-            runtime, "signing_operation", _DestroyedSigner(runtime.signing_operation)
-        )
-
 
 class _DestroyedSigner:
     def __init__(self, old: SigningOperation) -> None:
