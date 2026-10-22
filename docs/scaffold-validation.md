@@ -65,7 +65,7 @@ G3 remains pending, and G4 remains pending.
 | G1 | **PASS** | Ten-entry signed log: edit plus rehash is detected at seq 5; deletion of seq 7 is `MISSING`; bare hash-chain control accepts the edit |
 | G2 | **PASS** | RFC 6962 vectors, independent reference, all inclusion/consistency proofs for sizes 1–200, and proof bit-flip rejection |
 | G3 | **PENDING** | Witness service and rewrite-refusal test are not implemented |
-| G4 | **PENDING** | Signer attestation endpoint and provider body-digest enforcement are not implemented |
+| G4 | **PENDING** | Provider body-digest enforcement and the complete Stage 3 attestation flow are not implemented; the signer-side attestation operation exists in the current in-process scope |
 
 ## Stage 1 coverage now implemented
 
@@ -86,7 +86,9 @@ G3 remains pending, and G4 remains pending.
 - Docker Compose configuration: the `docker` executable is not installed locally.
 - PostgreSQL migration execution and append-only trigger behavior.
 - Service startup, HTTP routes, healthchecks and network isolation.
-- Signer, ledger, witness, gateway, provider, reconciler and agent runtime behavior.
+- Ledger, witness, gateway, provider, reconciler and agent runtime behavior; the
+  signer-side checkpoint/heartbeat/attestation operations have since received
+  local coverage, but deployment behavior remains unverified.
 - Acceptance scenarios E1–E12 and production key custody/HSM guarantees.
 - CI's Python 3.11–3.13 matrix and its Docker-equipped runner.
 
