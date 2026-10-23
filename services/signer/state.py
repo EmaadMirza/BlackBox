@@ -388,6 +388,7 @@ def persist_state(
     last_checkpoint: Any = None,
     outbox_append: Iterable[SealedEntry] = (),
     reserved: bool = False,
+    outbox_max_pending: int = outbox.MAX_PENDING,
 ) -> None:
     """Persist signer state with a detectable pre-commit marker."""
 
@@ -437,7 +438,12 @@ def persist_state(
     else:
         current_outbox = outbox.OutboxSnapshot(log_id, -1, GENESIS_PREV_HASH, ())
     if appended:
-        next_outbox = outbox.append(current_outbox, appended, reserved=reserved)
+        next_outbox = outbox.append(
+            current_outbox,
+            appended,
+            reserved=reserved,
+            max_pending=outbox_max_pending,
+        )
     elif current_outbox.entries:
         next_outbox = current_outbox
     else:

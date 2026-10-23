@@ -20,6 +20,7 @@ from services.signer.http_contract import (
     SEAL_PATH,
     AttestRequest,
 )
+from services.signer.outbox import OutboxError
 from services.signer.sealer import SignerSealer
 from services.signer.state import OutcomeIndexError, epoch_metadata_exists
 
@@ -40,6 +41,8 @@ def signer_health(signer: object | None) -> dict[str, str]:
     if signer is None:
         return {"status": "ok"}
     reason = getattr(signer, "health_reason", None)
+    if reason == "outbox_high":
+        return {"status": "ok", "reason": reason}
     if reason is not None:
         return {"status": "degraded", "reason": reason}
     manager = getattr(signer, "_epoch_manager", None)
@@ -88,6 +91,10 @@ async def seal_http(request: Request, _: None = Depends(require_bearer)) -> Seal
         raise SignerHTTPError(
             409, "outcome_index_invalid", "Signer outcome state is invalid."
         ) from exc
+    except OutboxError as exc:
+        if exc.code == "outbox_full":
+            raise SignerHTTPError(503, "outbox_full", "Signer outbox is full.") from exc
+        raise SignerHTTPError(503, "signer_unavailable", "Signer unavailable.") from exc
     except EpochUnavailableError as exc:
         raise SignerHTTPError(503, "new_epoch_required", "A new signer epoch is required.") from exc
     except SignerRuleError as exc:

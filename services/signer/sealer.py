@@ -7,9 +7,11 @@ the operation is retained only by this signer-owned object.
 
 from __future__ import annotations
 
-from collections.abc import Callable
+import inspect
+from collections.abc import Callable, Mapping
 from datetime import timedelta
 from threading import RLock
+from typing import Any
 
 from libs.blackbox_core import sealing
 from libs.blackbox_core.attestation import build_attestation
@@ -34,7 +36,7 @@ from libs.blackbox_core.signer_rules import (
     check_seal_request,
 )
 from libs.blackbox_core.signing import sign_structure
-from services.signer import state
+from services.signer import outbox, state
 from services.signer.clock import system_utc_now
 from services.signer.epoch_manager import EpochManager, EpochUnavailableError, RolloverPlan
 from services.signer.history import (
@@ -72,11 +74,14 @@ class SignerSealer:
         epoch_id: int | None = None,
         history_source: HistorySource | None = None,
         epoch_manager: EpochManager | None = None,
+        outbox_max_pending: int = outbox.MAX_PENDING,
     ) -> None:
         if epoch_id is not None and (type(epoch_id) is not int or epoch_id < 0):
             raise ValueError("epoch_id must be a non-negative integer")
         if type(rate_cap) is not int or rate_cap <= 0:
             raise ValueError("rate_cap must be a positive integer")
+        if type(outbox_max_pending) is not int or outbox_max_pending <= 0:
+            raise ValueError("outbox_max_pending must be a positive integer")
 
         # Validate runtime metadata at construction, before any candidate can
         # reach the signing operation.  These are the same encodings used by
@@ -93,6 +98,7 @@ class SignerSealer:
         self._valid_until = valid_until
         self._clock = clock
         self._rate_cap = rate_cap
+        self._outbox_max_pending = outbox_max_pending
         self._signing_operation = signing_operation
         self._rate_limiter = DurableRateLimiter()
         self._history_source = history_source
@@ -112,11 +118,70 @@ class SignerSealer:
     def health_reason(self) -> str | None:
         if self._epoch_manager is not None and self._epoch_manager.degraded:
             return "new_epoch_required"
+        pending = len(state.load_outbox(self._log_id).entries)
+        if pending >= self._outbox_max_pending:
+            return "outbox_full"
+        if pending * 2 >= self._outbox_max_pending:
+            return "outbox_high"
         return None
 
     def seal(self, candidate: object) -> SealedEntry:
         with self._lock:
             return self._seal_unlocked(candidate)
+
+    def pending_outbox(self, limit: int | None = None) -> tuple[SealedEntry, ...]:
+        with self._lock:
+            if limit is not None and (type(limit) is not int or limit < 0):
+                raise ValueError("outbox limit must be a non-negative integer")
+            entries = state.load_outbox(self._log_id).entries
+            return entries if limit is None else entries[:limit]
+
+    def acknowledge_outbox(self, seq: int, entry_hash_value: str) -> outbox.OutboxSnapshot:
+        with self._lock:
+            return state.acknowledge_outbox(self._log_id, seq, entry_hash_value)
+
+    def _persist_with_outbox(
+        self,
+        last_seq: int,
+        last_hash: str,
+        epoch_id: int,
+        log_id: str,
+        outcome_index: Mapping[int, str] | None = None,
+        epoch_metadata: Mapping[str, Any] | None = None,
+        last_checkpoint: Any = None,
+        *,
+        outbox_append: tuple[SealedEntry, ...],
+        reserved: bool = False,
+    ) -> None:
+        parameters = inspect.signature(state.persist_state).parameters
+        accepts_outbox = "outbox_append" in parameters or any(
+            parameter.kind is inspect.Parameter.VAR_KEYWORD for parameter in parameters.values()
+        )
+        if not accepts_outbox:
+            # Preserve compatibility with test-only legacy persistence callbacks.
+            legacy_args: list[object] = [last_seq, last_hash, epoch_id, log_id]
+            positional = [
+                parameter
+                for parameter in parameters.values()
+                if parameter.kind
+                in (inspect.Parameter.POSITIONAL_ONLY, inspect.Parameter.POSITIONAL_OR_KEYWORD)
+            ]
+            optional_values = (outcome_index, epoch_metadata, last_checkpoint)
+            legacy_args.extend(optional_values[: max(0, len(positional) - 4)])
+            state.persist_state(*legacy_args)  # type: ignore[arg-type]
+            return
+        state.persist_state(
+            last_seq,
+            last_hash,
+            epoch_id,
+            log_id,
+            outcome_index,
+            epoch_metadata,
+            last_checkpoint,
+            outbox_append=outbox_append,
+            reserved=reserved,
+            outbox_max_pending=self._outbox_max_pending,
+        )
 
     def _seal_unlocked(self, candidate: object) -> SealedEntry:
         """Validate, sign, durably advance, and return one gateway entry.
@@ -247,16 +312,21 @@ class SignerSealer:
         # write cannot produce a successful return.
         if isinstance(sealed.body, Outcome):
             outcome_index[sealed.body.intent_seq] = sealed_body_hash
-            state.persist_state(
+            self._persist_with_outbox(
                 sealed.body.seq,
                 sealed_body_hash,
                 sealed.body.epoch_id,
                 self._log_id,
                 outcome_index,
+                outbox_append=(sealed,),
             )
         else:
-            state.persist_state(
-                sealed.body.seq, sealed_body_hash, sealed.body.epoch_id, self._log_id
+            self._persist_with_outbox(
+                sealed.body.seq,
+                sealed_body_hash,
+                sealed.body.epoch_id,
+                self._log_id,
+                outbox_append=(sealed,),
             )
         if isinstance(sealed.body, Intent):
             self._sealed_intents[sealed.body.seq] = sealed_body_hash
@@ -367,7 +437,7 @@ class SignerSealer:
                 epoch_id=epoch_id,
                 latest_seq=max(last_seq, 0),
                 latest_entry_hash=last_hash,
-                queue_depth=0,
+                queue_depth=len(state.load_outbox(self._log_id).entries),
                 signer_timestamp=now,
             ),
             operation,
@@ -411,13 +481,15 @@ class SignerSealer:
             plan = self._epoch_manager.prepare_rollover(
                 last_seq, last_hash, self._epoch_manager.last_timestamp
             )
-            state.persist_state(
+            self._persist_with_outbox(
                 plan.start.body.seq,
                 entry_hash(plan.start.body),
                 plan.start.body.epoch_id,
                 self._log_id,
                 outcome_index,
                 self._epoch_manager.metadata_for(plan.new_runtime),
+                outbox_append=(plan.end, plan.start),
+                reserved=True,
             )
             return plan
         except BaseException:

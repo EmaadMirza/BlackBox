@@ -109,9 +109,11 @@ remain incomplete, and G3/G4 acceptance tests are expected-failure placeholders.
   against the current epoch window. The witness-side stall/mismatch service remains
   unimplemented; the pure heartbeat/checkpoint comparison helper is covered only by
   unit tests.
-- Tick-produced rollover entries are returned for delivery but no outbox or ledger
-  delivery path exists yet. They reach the ledger only once Task L delivery is
-  implemented; a production runner must retain them until then.
+- Tick-produced rollover entries and sealed entries are now retained in the signer
+  outbox for at-least-once delivery, but no ledger delivery loop exists yet. The
+  outbox migration is manual: pre-outbox entries may already have been lost, and
+  migration creates an empty queue only after an operator proves the supplied
+  ledger head equals the durable signer head.
 - `services/signer/heartbeat.py:run()` is now a thin async loop over `TickRunner`.
   It does not create threads or own signer concurrency; deployment remains
   responsible for invoking it with the single signer instance.
