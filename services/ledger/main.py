@@ -20,6 +20,7 @@ from libs.blackbox_core.schemas import (
 )
 from libs.blackbox_core.sealing import verify_entry
 from services.ledger import db
+from services.ledger.store import LedgerStore, StoredEntry
 
 
 class LedgerHTTPError(Exception):
@@ -34,9 +35,11 @@ def require_bearer(request: Request) -> None:
         raise LedgerHTTPError(401, "unauthorized", "Authentication required.")
 
 
-def create_app() -> FastAPI:
+def create_app(*, store: LedgerStore | None = None) -> FastAPI:
     app = FastAPI()
-    app.state.pool = db.connect(os.environ.get("LEDGER_DATABASE_URL", "dbname=blackbox_ledger"))
+    app.state.store = store
+    if store is None:
+        app.state.pool = db.connect(os.environ.get("LEDGER_DATABASE_URL", "dbname=blackbox_ledger"))
 
     @app.exception_handler(LedgerHTTPError)
     async def ledger_error(_: Request, exc: LedgerHTTPError) -> JSONResponse:
@@ -65,6 +68,8 @@ def create_app() -> FastAPI:
             entry = SealedEntry.model_validate(loads(raw))
         except (RecursionError, TypeError, ValueError, UnicodeDecodeError, ValidationError) as exc:
             raise LedgerHTTPError(422, "invalid_request", "Invalid sealed entry.") from exc
+        if app.state.store is not None:
+            return _append_verified_store(app.state.store, entry)
         return _append_verified(app.state.pool, entry)
 
     @app.get("/entries")
@@ -75,16 +80,79 @@ def create_app() -> FastAPI:
     ) -> list[dict[str, object]]:
         if end < start or end - start > 1000:
             raise LedgerHTTPError(422, "invalid_range", "Invalid entry range.")
-        return [entry.model_dump() for entry in db.read_entries(app.state.pool, start, end)]
+        entries = (
+            app.state.store.read_entries(start, end)
+            if app.state.store is not None
+            else db.read_entries(app.state.pool, start, end)
+        )
+        return [entry.model_dump() for entry in entries]
 
     @app.get("/entries/{seq}")
     async def read_one(seq: int, _: None = Depends(require_bearer)) -> dict[str, object]:
-        rows = db.read_entries(app.state.pool, seq, seq)
+        rows = (
+            app.state.store.read_entries(seq, seq)
+            if app.state.store is not None
+            else db.read_entries(app.state.pool, seq, seq)
+        )
         if not rows:
             raise LedgerHTTPError(404, "not_found", "Entry not found.")
         return rows[0].model_dump()
 
     return app
+
+
+def _append_verified_store(store: LedgerStore, entry: SealedEntry) -> dict[str, object]:
+    body = entry.body
+    current_hash = entry_hash(body)
+    existing = store.get_entry(body.log_id, body.seq)
+    if existing is not None:
+        if existing.entry_hash == current_hash and existing.entry.model_dump(
+            mode="json"
+        ) == entry.model_dump(mode="json"):
+            return {"status": "stored", "entry_hash": current_hash}
+        store.record_conflict(
+            body.log_id,
+            body.seq,
+            existing.entry_hash,
+            current_hash,
+            {
+                "existing": existing.entry.model_dump(mode="json"),
+                "rejected": entry.model_dump(mode="json"),
+            },
+        )
+        raise LedgerHTTPError(409, "equivocation", "Entry conflicts with existing history.")
+    _verify_entry_store(store, entry)
+    try:
+        store.insert_entry(StoredEntry(entry, current_hash))
+    except KeyError as exc:
+        raise LedgerHTTPError(409, "conflict", "Entry conflicts with ledger state.") from exc
+    return {"status": "stored", "entry_hash": current_hash}
+
+
+def _verify_entry_store(store: LedgerStore, entry: SealedEntry) -> None:
+    body = entry.body
+    epoch = store.get_epoch(body.log_id, body.epoch_id)
+    if epoch is None or certificate_id(epoch) != body.epoch_certificate_id:
+        raise LedgerHTTPError(422, "certificate_unavailable", "Entry certificate is unavailable.")
+    intermediate = store.get_intermediate(epoch.intermediate_id)
+    root_key = store.get_root(body.log_id)
+    if intermediate is None or root_key is None:
+        raise LedgerHTTPError(422, "certificate_invalid", "Entry certificate is invalid.")
+    if not verify_epoch_certificate(
+        epoch, intermediate, decode_base64url(root_key), body.signer_timestamp
+    ):
+        raise LedgerHTTPError(422, "certificate_invalid", "Entry certificate is invalid.")
+    if not in_window(body.signer_timestamp, epoch.valid_from, epoch.valid_until):
+        raise LedgerHTTPError(422, "epoch_expired", "Entry is outside its epoch window.")
+    if not verify_entry(entry, decode_base64url(epoch.epoch_public_key)):
+        raise LedgerHTTPError(422, "signature_invalid", "Entry signature is invalid.")
+    previous = store.latest_entry(body.log_id)
+    if previous and (
+        body.seq != previous.entry.body.seq + 1 or body.prev_hash != previous.entry_hash
+    ):
+        raise LedgerHTTPError(409, "out_of_order", "Entry is not contiguous.")
+    if not previous and body.seq != 0:
+        raise LedgerHTTPError(409, "out_of_order", "Entry is not contiguous.")
 
 
 def _append_verified(pool, entry: SealedEntry) -> dict[str, object]:

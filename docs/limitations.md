@@ -114,6 +114,11 @@ remain incomplete, and G3/G4 acceptance tests are expected-failure placeholders.
   outbox migration is manual: pre-outbox entries may already have been lost, and
   migration creates an empty queue only after an operator proves the supplied
   ledger head equals the durable signer head.
+- L2b-2 proves signer-to-ledger delivery only in-process with an injected
+  `InMemoryLedgerStore`; it does not prove the real HTTP/network deployment.
+  The offline bundle check uses the existing development evidence fixture. The
+  Postgres triggers, roles, transaction behavior and Compose path remain deferred
+  to the Docker validation stage documented in `docs/deferred-validation.md`.
 - `services/signer/heartbeat.py:run()` is now a thin async loop over `TickRunner`.
   It does not create threads or own signer concurrency; deployment remains
   responsible for invoking it with the single signer instance.
