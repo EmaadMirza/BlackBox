@@ -47,6 +47,7 @@ services:
   ledger-db:
     image: postgres:16
     networks: [seal_net]
+    ports: ["127.0.0.1:${LEDGER_DB_PORT:-55432}:5432"]
     environment:
       POSTGRES_DB: ${POSTGRES_DB:-blackbox}
       POSTGRES_USER: ${POSTGRES_USER:-blackbox_admin}

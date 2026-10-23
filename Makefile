@@ -6,7 +6,7 @@ BUNDLE ?= artifacts/bundle.json
 PINNED_KEYS ?= artifacts/pinned-keys.json
 DEMO_OUTPUT ?= artifacts
 
-.PHONY: up down test gates attack bench lint verify demo-bundle
+.PHONY: up down test test-integration gates attack bench lint verify demo-bundle
 up:
 	docker compose up --build -d
 	docker compose -f docker-compose.provider.yml up --build -d
@@ -17,6 +17,9 @@ down:
 
 test:
 	$(PYTEST) -q
+
+test-integration:
+	LEDGER_TEST_DSN="$${LEDGER_TEST_DSN:-dbname=blackbox_ledger}" $(PYTEST) -q tests/integration
 
 gates:
 	$(PYTEST) -q tests/gates

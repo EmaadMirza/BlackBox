@@ -26,6 +26,7 @@ libs/blackbox_core/encoding.py
 libs/blackbox_core/epochs.py
 libs/blackbox_core/errors.py
 libs/blackbox_core/evidence.py
+libs/blackbox_core/heartbeat.py
 libs/blackbox_core/labels.py
 libs/blackbox_core/merkle.py
 libs/blackbox_core/receipts.py
@@ -79,9 +80,15 @@ services/reconciler/join.py
 services/reconciler/main.py
 services/reconciler/verdicts.py
 services/signer/__init__.py
+services/signer/auth.py
+services/signer/clock.py
 services/signer/epoch_manager.py
 services/signer/heartbeat.py
+services/signer/history.py
+services/signer/http_contract.py
 services/signer/main.py
+services/signer/rate_limit.py
+services/signer/sealer.py
 services/signer/state.py
 services/witness/__init__.py
 services/witness/alarms.py
@@ -93,6 +100,7 @@ services/witness/store.py
 tools/__init__.py
 tools/ceremony.py
 tools/cli.py
+tools/demo_bundle.py
 tools/attack_suite/__init__.py
 tools/attack_suite/e10_approval_abuse.py
 tools/attack_suite/e11_key_compromise.py
