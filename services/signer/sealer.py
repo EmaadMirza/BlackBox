@@ -109,6 +109,7 @@ class SignerSealer:
         self._lock = RLock()
         self._heartbeat_interval = 5
         self._last_heartbeat_at = None
+        self._delivery_alarm: str | None = None
 
     def seal_with_rollover(self, candidate: object) -> tuple[tuple[SealedEntry, ...], SealedEntry]:
         sealed = self.seal(candidate)
@@ -116,6 +117,8 @@ class SignerSealer:
 
     @property
     def health_reason(self) -> str | None:
+        if self._delivery_alarm is not None:
+            return self._delivery_alarm
         if self._epoch_manager is not None and self._epoch_manager.degraded:
             return "new_epoch_required"
         pending = len(state.load_outbox(self._log_id).entries)
@@ -124,6 +127,14 @@ class SignerSealer:
         if pending * 2 >= self._outbox_max_pending:
             return "outbox_high"
         return None
+
+    def set_delivery_alarm(self, reason: str) -> None:
+        with self._lock:
+            self._delivery_alarm = reason
+
+    def reset_delivery_alarm(self) -> None:
+        with self._lock:
+            self._delivery_alarm = None
 
     def seal(self, candidate: object) -> SealedEntry:
         with self._lock:
