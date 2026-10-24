@@ -19,7 +19,7 @@ test:
 	$(PYTEST) -q
 
 test-integration:
-	LEDGER_TEST_DSN="$${LEDGER_TEST_DSN:-dbname=blackbox_ledger}" $(PYTEST) -q tests/integration
+	LEDGER_TEST_DSN="$${LEDGER_TEST_DSN:-dbname=blackbox_ledger_test}" $(PYTEST) -q tests/integration
 
 gates:
 	$(PYTEST) -q tests/gates

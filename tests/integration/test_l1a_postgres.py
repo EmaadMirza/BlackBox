@@ -7,14 +7,13 @@ import os
 import psycopg
 import pytest
 
+from tests.integration.support import get_test_dsn
+
 pytestmark = pytest.mark.integration
 
 
 def dsn() -> str:
-    value = os.environ.get("LEDGER_TEST_DSN")
-    if not value:
-        pytest.fail("LEDGER_TEST_DSN must point at the real ledger-db container")
-    return value
+    return get_test_dsn()
 
 
 def test_schema_and_version() -> None:

@@ -109,16 +109,15 @@ remain incomplete, and G3/G4 acceptance tests are expected-failure placeholders.
   against the current epoch window. The witness-side stall/mismatch service remains
   unimplemented; the pure heartbeat/checkpoint comparison helper is covered only by
   unit tests.
-- Tick-produced rollover entries and sealed entries are now retained in the signer
-  outbox for at-least-once delivery, but no ledger delivery loop exists yet. The
-  outbox migration is manual: pre-outbox entries may already have been lost, and
-  migration creates an empty queue only after an operator proves the supplied
-  ledger head equals the durable signer head.
-- L2b-2 proves signer-to-ledger delivery only in-process with an injected
-  `InMemoryLedgerStore`; it does not prove the real HTTP/network deployment.
-  The offline bundle check uses the existing development evidence fixture. The
-  Postgres triggers, roles, transaction behavior and Compose path remain deferred
-  to the Docker validation stage documented in `docs/deferred-validation.md`.
+- Tick-produced rollover entries and sealed entries are retained in the signer
+  outbox and delivered at least once in sequence by the cooperative delivery
+  worker. The outbox migration is manual: pre-outbox entries may already have
+  been lost, and migration creates an empty queue only after an operator proves
+  the supplied ledger head equals the durable signer head.
+- L2b-2 now proves signer-to-ledger delivery against a real local PostgreSQL
+  database, with an in-process transport calling the FastAPI ledger app. It does
+  not prove a real network deployment, Compose startup, or cross-process HTTP.
+  The integration bundle is exported from PostgreSQL rows and verified offline.
 - `services/signer/heartbeat.py:run()` is now a thin async loop over `TickRunner`.
   It does not create threads or own signer concurrency; deployment remains
   responsible for invoking it with the single signer instance.

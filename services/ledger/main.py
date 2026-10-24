@@ -7,6 +7,7 @@ import os
 from fastapi import Depends, FastAPI, Query, Request
 from fastapi.responses import JSONResponse
 from psycopg import errors
+from psycopg.types.json import Jsonb
 from pydantic import ValidationError
 
 from libs.blackbox_core.canonical import loads
@@ -158,6 +159,7 @@ def _verify_entry_store(store: LedgerStore, entry: SealedEntry) -> None:
 def _append_verified(pool, entry: SealedEntry) -> dict[str, object]:
     body = entry.body
     current_hash = entry_hash(body)
+    conflict = False
     with pool.connection() as connection:
         with connection.transaction():
             row = connection.execute(
@@ -174,30 +176,33 @@ def _append_verified(pool, entry: SealedEntry) -> dict[str, object]:
                         body.seq,
                         row[0],
                         current_hash,
-                        {"existing": row[1], "rejected": entry.model_dump(mode="json")},
+                        Jsonb({"existing": row[1], "rejected": entry.model_dump(mode="json")}),
                     ),
                 )
-                raise LedgerHTTPError(409, "equivocation", "Entry conflicts with existing history.")
-            _verify_entry(pool, connection, entry)
-            try:
-                connection.execute(
-                    """INSERT INTO blackbox.entries
-                    (log_id, seq, sealed_entry, entry_hash, prev_hash, epoch_id, type)
-                    VALUES (%s,%s,%s,%s,%s,%s,%s)""",
-                    (
-                        body.log_id,
-                        body.seq,
-                        entry.model_dump(mode="json"),
-                        current_hash,
-                        body.prev_hash,
-                        body.epoch_id,
-                        body.type,
-                    ),
-                )
-            except errors.UniqueViolation as exc:
-                raise LedgerHTTPError(
-                    409, "conflict", "Entry conflicts with ledger state."
-                ) from exc
+                conflict = True
+            else:
+                _verify_entry(pool, connection, entry)
+                try:
+                    connection.execute(
+                        """INSERT INTO blackbox.entries
+                        (log_id, seq, sealed_entry, entry_hash, prev_hash, epoch_id, type)
+                        VALUES (%s,%s,%s,%s,%s,%s,%s)""",
+                        (
+                            body.log_id,
+                            body.seq,
+                            Jsonb(entry.model_dump(mode="json")),
+                            current_hash,
+                            body.prev_hash,
+                            body.epoch_id,
+                            body.type,
+                        ),
+                    )
+                except errors.UniqueViolation as exc:
+                    raise LedgerHTTPError(
+                        409, "conflict", "Entry conflicts with ledger state."
+                    ) from exc
+    if conflict:
+        raise LedgerHTTPError(409, "equivocation", "Entry conflicts with existing history.")
     return {"status": "stored", "entry_hash": current_hash}
 
 
