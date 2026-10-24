@@ -289,7 +289,9 @@ class SignerSealer:
                     ):
                         raise HistoryIntegrityError("indexed outcome evidence disagrees")
                     outcomes[parsed_candidate.intent_seq] = prior_entry.body
-            except (HistorySourceError, HistoryIntegrityError, OutcomeConflictError):
+            except (HistorySourceError, HistoryIntegrityError, OutcomeConflictError) as exc:
+                if isinstance(exc, HistoryIntegrityError):
+                    self.set_delivery_alarm(exc.alarm_code)
                 raise
             except Exception as exc:
                 raise HistorySourceError("history source failed closed") from exc

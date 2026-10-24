@@ -268,10 +268,12 @@ def test_history_disagreement_is_alarm_grade_rejection(
     )
     source = FakeHistorySource(log_id, intent_record, None)
 
+    operation = make_sealer(
+        epoch_key, source, log_id=log_id, epoch_certificate_id=certificate_id(epoch)
+    )
     with pytest.raises(HistoryIntegrityError, match="idempotency"):
-        make_sealer(
-            epoch_key, source, log_id=log_id, epoch_certificate_id=certificate_id(epoch)
-        ).seal(bad_outcome)
+        operation.seal(bad_outcome)
+    assert operation.health_reason == "HISTORY_INTEGRITY"
 
 
 def test_missing_or_corrupt_outcome_index_fails_closed(

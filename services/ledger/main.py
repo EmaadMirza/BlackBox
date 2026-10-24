@@ -148,6 +148,44 @@ def create_app(
             raise LedgerHTTPError(404, "not_found", "Entry not found.")
         return rows[0].model_dump()
 
+    @app.get("/history/intent")
+    async def history_intent(
+        log_id: str, seq: int = Query(ge=0), _: None = Depends(require_bearer)
+    ) -> dict[str, object]:
+        try:
+            return _history_record_response(app.state.pool, log_id, seq)
+        except (KeyError, TypeError, ValueError, IndexError) as exc:
+            raise LedgerHTTPError(
+                503, "history_unavailable", "History evidence is unavailable."
+            ) from exc
+
+    @app.get("/history/outcome")
+    async def history_outcome(
+        log_id: str,
+        outcome_hash: str,
+        intent_seq: int = Query(ge=0),
+        _: None = Depends(require_bearer),
+    ) -> dict[str, object]:
+        try:
+            row = app.state.pool
+            with row.connection() as connection:
+                found = connection.execute(
+                    """SELECT seq FROM blackbox.entries
+                    WHERE log_id=%s AND entry_hash=%s""",
+                    (log_id, outcome_hash),
+                ).fetchone()
+            if found is None:
+                raise LedgerHTTPError(
+                    404, "history_unavailable", "History evidence is unavailable."
+                )
+            return _history_record_response(app.state.pool, log_id, found[0])
+        except LedgerHTTPError:
+            raise
+        except (KeyError, TypeError, ValueError, IndexError) as exc:
+            raise LedgerHTTPError(
+                503, "history_unavailable", "History evidence is unavailable."
+            ) from exc
+
     @app.get("/proof/inclusion")
     async def inclusion_proof(
         request: Request, _: None = Depends(require_bearer)
@@ -253,6 +291,52 @@ def _append_verified_store(store: LedgerStore, entry: SealedEntry) -> dict[str, 
 def _load_proof_leaves(pool) -> list[bytes]:
     with pool.connection() as connection:
         return proofs.load_leaves(connection)
+
+
+def _history_record_response(pool, log_id: str, target_seq: int) -> dict[str, object]:
+    if type(target_seq) is not int or target_seq < 0:
+        raise ValueError("invalid history target")
+    with pool.connection() as connection:
+        rows = connection.execute(
+            """SELECT sealed_entry FROM blackbox.entries
+            WHERE log_id=%s AND seq <= %s ORDER BY seq""",
+            (log_id, target_seq),
+        ).fetchall()
+        if len(rows) != target_seq + 1:
+            raise ValueError("history prefix is incomplete")
+        root_row = connection.execute(
+            "SELECT root_public_key FROM blackbox.pinned_roots WHERE log_id=%s",
+            (log_id,),
+        ).fetchone()
+        if root_row is None:
+            raise ValueError("history root is unavailable")
+        evidence: list[dict[str, object]] = []
+        for row in rows:
+            entry = SealedEntry.model_validate(row[0])
+            epoch_row = connection.execute(
+                """SELECT certificate FROM blackbox.epochs
+                WHERE log_id=%s AND epoch_certificate_id=%s""",
+                (log_id, entry.body.epoch_certificate_id),
+            ).fetchone()
+            if epoch_row is None:
+                raise ValueError("history epoch is unavailable")
+            epoch_certificate = EpochCertificate.model_validate(epoch_row[0])
+            intermediate_row = connection.execute(
+                """SELECT certificate FROM blackbox.intermediates
+                WHERE log_id=%s AND intermediate_id=%s""",
+                (log_id, epoch_certificate.intermediate_id),
+            ).fetchone()
+            if intermediate_row is None:
+                raise ValueError("history intermediate is unavailable")
+            evidence.append(
+                {
+                    "entry": entry.model_dump(mode="json"),
+                    "epoch_certificate": epoch_certificate.model_dump(mode="json"),
+                    "intermediate_certificate": intermediate_row[0],
+                    "root_public_key": root_row[0],
+                }
+            )
+    return {"target_seq": target_seq, "entries": evidence}
 
 
 def _verify_entry_store(store: LedgerStore, entry: SealedEntry) -> None:
