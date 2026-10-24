@@ -12,6 +12,15 @@ evidence exported from PostgreSQL rows.
 The transport is intentionally in-process, so these tests do **not** establish
 production network or deployment guarantees.
 
+## L3a Merkle frontier boundary
+
+The ledger persists one append-only frontier snapshot per tree size in
+`blackbox.merkle_frontiers`. On startup it recomputes each log from the stored
+sealed entries in O(N) time and refuses checkpoint service with
+`merkle_frontier_mismatch` if the frontier or root disagrees. Entry reads remain
+available during that degraded state. The current stage does not yet provide a
+checkpoint scheduler or witness service.
+
 ## Docker/Postgres validation still required
 
 The following claims remain deferred to the Docker stage:

@@ -118,6 +118,10 @@ remain incomplete, and G3/G4 acceptance tests are expected-failure placeholders.
   database, with an in-process transport calling the FastAPI ledger app. It does
   not prove a real network deployment, Compose startup, or cross-process HTTP.
   The integration bundle is exported from PostgreSQL rows and verified offline.
+- L3a persists append-only right-frontier snapshots and recomputes each log from
+  entries at ledger startup in O(N) time. A mismatch degrades checkpoint service
+  with `merkle_frontier_mismatch` while entry reads remain available; checkpoint
+  scheduling and witness consistency are still unimplemented.
 - `services/signer/heartbeat.py:run()` is now a thin async loop over `TickRunner`.
   It does not create threads or own signer concurrency; deployment remains
   responsible for invoking it with the single signer instance.

@@ -20,7 +20,7 @@ from libs.blackbox_core.schemas import (
     SealedEntry,
 )
 from libs.blackbox_core.sealing import verify_entry
-from services.ledger import db
+from services.ledger import db, merkle_store
 from services.ledger.store import LedgerStore, StoredEntry
 
 
@@ -41,6 +41,13 @@ def create_app(*, store: LedgerStore | None = None) -> FastAPI:
     app.state.store = store
     if store is None:
         app.state.pool = db.connect(os.environ.get("LEDGER_DATABASE_URL", "dbname=blackbox_ledger"))
+        app.state.merkle_ready = True
+        app.state.merkle_error = None
+        try:
+            merkle_store.validate_startup(app.state.pool)
+        except merkle_store.MerkleStateError as exc:
+            app.state.merkle_ready = False
+            app.state.merkle_error = exc.code
 
     @app.exception_handler(LedgerHTTPError)
     async def ledger_error(_: Request, exc: LedgerHTTPError) -> JSONResponse:
@@ -98,6 +105,16 @@ def create_app(*, store: LedgerStore | None = None) -> FastAPI:
         if not rows:
             raise LedgerHTTPError(404, "not_found", "Entry not found.")
         return rows[0].model_dump()
+
+    @app.get("/checkpoints/latest")
+    async def latest_checkpoint(_: None = Depends(require_bearer)) -> dict[str, object]:
+        if app.state.store is None and not app.state.merkle_ready:
+            raise LedgerHTTPError(
+                503,
+                merkle_store.MERKLE_FRONTIER_MISMATCH,
+                "Ledger checkpoint state is unavailable.",
+            )
+        raise LedgerHTTPError(404, "checkpoint_unavailable", "No checkpoint is available.")
 
     return app
 
@@ -197,6 +214,7 @@ def _append_verified(pool, entry: SealedEntry) -> dict[str, object]:
                             body.type,
                         ),
                     )
+                    merkle_store.append_in_transaction(connection, entry)
                 except errors.UniqueViolation as exc:
                     raise LedgerHTTPError(
                         409, "conflict", "Entry conflicts with ledger state."
