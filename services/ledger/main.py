@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+from contextlib import asynccontextmanager
 
 from fastapi import Depends, FastAPI, Query, Request
 from fastapi.responses import JSONResponse
@@ -20,13 +21,20 @@ from libs.blackbox_core.schemas import (
     SealedEntry,
 )
 from libs.blackbox_core.sealing import verify_entry
-from services.ledger import db, merkle_store
+from services.ledger import db, merkle_store, proofs
 from services.ledger.store import LedgerStore, StoredEntry
 
 
 class LedgerHTTPError(Exception):
     def __init__(self, status: int, code: str, message: str) -> None:
         self.status, self.code, self.message = status, code, message
+
+
+@asynccontextmanager
+async def _lifespan(app: FastAPI):
+    yield
+    if app.state.store is None:
+        app.state.pool.close()
 
 
 def require_bearer(request: Request) -> None:
@@ -37,7 +45,7 @@ def require_bearer(request: Request) -> None:
 
 
 def create_app(*, store: LedgerStore | None = None) -> FastAPI:
-    app = FastAPI()
+    app = FastAPI(lifespan=_lifespan)
     app.state.store = store
     if store is None:
         app.state.pool = db.connect(os.environ.get("LEDGER_DATABASE_URL", "dbname=blackbox_ledger"))
@@ -106,6 +114,34 @@ def create_app(*, store: LedgerStore | None = None) -> FastAPI:
             raise LedgerHTTPError(404, "not_found", "Entry not found.")
         return rows[0].model_dump()
 
+    @app.get("/proof/inclusion")
+    async def inclusion_proof(
+        request: Request, _: None = Depends(require_bearer)
+    ) -> dict[str, object]:
+        if app.state.store is not None:
+            raise LedgerHTTPError(503, "proof_unavailable", "Proof state is unavailable.")
+        try:
+            query = proofs.parse_query(request.query_params.multi_items(), {"seq", "tree_size"})
+            leaves = _load_proof_leaves(app.state.pool)
+            proof = proofs.inclusion(leaves, query["seq"], query["tree_size"])
+        except proofs.ProofError as exc:
+            raise LedgerHTTPError(exc.status, exc.code, exc.message) from exc
+        return {"seq": query["seq"], "tree_size": query["tree_size"], "proof": proof}
+
+    @app.get("/proof/consistency")
+    async def consistency_proof(
+        request: Request, _: None = Depends(require_bearer)
+    ) -> dict[str, object]:
+        if app.state.store is not None:
+            raise LedgerHTTPError(503, "proof_unavailable", "Proof state is unavailable.")
+        try:
+            query = proofs.parse_query(request.query_params.multi_items(), {"from", "to"})
+            leaves = _load_proof_leaves(app.state.pool)
+            proof = proofs.consistency(leaves, query["from"], query["to"])
+        except proofs.ProofError as exc:
+            raise LedgerHTTPError(exc.status, exc.code, exc.message) from exc
+        return {"old_size": query["from"], "new_size": query["to"], "proof": proof}
+
     @app.get("/checkpoints/latest")
     async def latest_checkpoint(_: None = Depends(require_bearer)) -> dict[str, object]:
         if app.state.store is None and not app.state.merkle_ready:
@@ -145,6 +181,11 @@ def _append_verified_store(store: LedgerStore, entry: SealedEntry) -> dict[str, 
     except KeyError as exc:
         raise LedgerHTTPError(409, "conflict", "Entry conflicts with ledger state.") from exc
     return {"status": "stored", "entry_hash": current_hash}
+
+
+def _load_proof_leaves(pool) -> list[bytes]:
+    with pool.connection() as connection:
+        return proofs.load_leaves(connection)
 
 
 def _verify_entry_store(store: LedgerStore, entry: SealedEntry) -> None:
