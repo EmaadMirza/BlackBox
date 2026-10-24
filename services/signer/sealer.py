@@ -389,6 +389,15 @@ class SignerSealer:
             ) from exc
         last_seq, last_hash, epoch_id = state.load_state(self._log_id)
         previous = state.load_last_checkpoint(self._log_id)
+        if previous is not None and (
+            requested.log_id == previous.log_id
+            and requested.tree_size == previous.tree_size
+            and requested.root_hash == previous.root_hash
+            and requested.latest_seq == previous.latest_seq
+            and requested.latest_entry_hash == previous.latest_entry_hash
+            and requested.epoch_id == previous.epoch_id
+        ):
+            return previous
         now = self._clock()
         if requested.signer_timestamp != now:
             requested = requested.model_copy(update={"signer_timestamp": now})

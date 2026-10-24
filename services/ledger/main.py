@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import os
 from contextlib import asynccontextmanager
 
@@ -21,7 +22,7 @@ from libs.blackbox_core.schemas import (
     SealedEntry,
 )
 from libs.blackbox_core.sealing import verify_entry
-from services.ledger import db, merkle_store, proofs
+from services.ledger import checkpointer, db, merkle_store, proofs
 from services.ledger.store import LedgerStore, StoredEntry
 
 
@@ -32,7 +33,18 @@ class LedgerHTTPError(Exception):
 
 @asynccontextmanager
 async def _lifespan(app: FastAPI):
-    yield
+    task = None
+    if app.state.checkpointer is not None and app.state.run_checkpoint_scheduler:
+        task = asyncio.create_task(app.state.checkpointer.run())
+    try:
+        yield
+    finally:
+        if task is not None:
+            task.cancel()
+            try:
+                await task
+            except asyncio.CancelledError:
+                pass
     if app.state.store is None:
         app.state.pool.close()
 
@@ -44,9 +56,19 @@ def require_bearer(request: Request) -> None:
         raise LedgerHTTPError(401, "unauthorized", "Authentication required.")
 
 
-def create_app(*, store: LedgerStore | None = None) -> FastAPI:
+def create_app(
+    *,
+    store: LedgerStore | None = None,
+    signer_transport: checkpointer.SignerTransport | None = None,
+    checkpoint_log_id: str | None = None,
+    checkpoint_entry_interval: int = checkpointer.DEFAULT_ENTRY_INTERVAL,
+    checkpoint_clock=None,
+    run_checkpoint_scheduler: bool = False,
+) -> FastAPI:
     app = FastAPI(lifespan=_lifespan)
     app.state.store = store
+    app.state.checkpointer = None
+    app.state.run_checkpoint_scheduler = run_checkpoint_scheduler
     if store is None:
         app.state.pool = db.connect(os.environ.get("LEDGER_DATABASE_URL", "dbname=blackbox_ledger"))
         app.state.merkle_ready = True
@@ -56,6 +78,15 @@ def create_app(*, store: LedgerStore | None = None) -> FastAPI:
         except merkle_store.MerkleStateError as exc:
             app.state.merkle_ready = False
             app.state.merkle_error = exc.code
+        if signer_transport is not None and checkpoint_log_id is not None:
+            app.state.checkpointer = checkpointer.CheckpointScheduler(
+                pool=app.state.pool,
+                log_id=checkpoint_log_id,
+                signer_transport=signer_transport,
+                bearer_token=os.environ.get("SIGNER_AUTH_TOKEN", "signer-token"),
+                clock=checkpoint_clock or __import__("time").monotonic,
+                entry_interval=checkpoint_entry_interval,
+            )
 
     @app.exception_handler(LedgerHTTPError)
     async def ledger_error(_: Request, exc: LedgerHTTPError) -> JSONResponse:
@@ -86,7 +117,10 @@ def create_app(*, store: LedgerStore | None = None) -> FastAPI:
             raise LedgerHTTPError(422, "invalid_request", "Invalid sealed entry.") from exc
         if app.state.store is not None:
             return _append_verified_store(app.state.store, entry)
-        return _append_verified(app.state.pool, entry)
+        result = _append_verified(app.state.pool, entry)
+        if app.state.checkpointer is not None:
+            app.state.checkpointer.on_entry()
+        return result
 
     @app.get("/entries")
     async def read_range(
@@ -144,6 +178,10 @@ def create_app(*, store: LedgerStore | None = None) -> FastAPI:
 
     @app.get("/checkpoints/latest")
     async def latest_checkpoint(_: None = Depends(require_bearer)) -> dict[str, object]:
+        if app.state.checkpointer is not None:
+            checkpoint = app.state.checkpointer.latest()
+            if checkpoint is not None:
+                return checkpoint.model_dump(mode="json")
         if app.state.store is None and not app.state.merkle_ready:
             raise LedgerHTTPError(
                 503,
@@ -151,6 +189,35 @@ def create_app(*, store: LedgerStore | None = None) -> FastAPI:
                 "Ledger checkpoint state is unavailable.",
             )
         raise LedgerHTTPError(404, "checkpoint_unavailable", "No checkpoint is available.")
+
+    @app.post("/checkpoint/now")
+    async def checkpoint_now(_: None = Depends(require_bearer)) -> dict[str, object]:
+        scheduler = app.state.checkpointer
+        if scheduler is None:
+            raise LedgerHTTPError(
+                503, "checkpoint_unavailable", "Checkpoint service is unavailable."
+            )
+        try:
+            return scheduler.request_now().model_dump(mode="json")
+        except checkpointer.CheckpointSchedulerError as exc:
+            raise LedgerHTTPError(exc.status, exc.code, exc.message) from exc
+
+    @app.get("/checkpoint/latest")
+    async def checkpoint_latest(_: None = Depends(require_bearer)) -> dict[str, object]:
+        scheduler = app.state.checkpointer
+        if scheduler is None:
+            raise LedgerHTTPError(404, "checkpoint_unavailable", "No checkpoint is available.")
+        checkpoint = scheduler.latest()
+        if checkpoint is None:
+            raise LedgerHTTPError(404, "checkpoint_unavailable", "No checkpoint is available.")
+        return checkpoint.model_dump(mode="json")
+
+    @app.get("/checkpoint/witnessed")
+    async def checkpoint_witnessed(_: None = Depends(require_bearer)) -> list[dict[str, object]]:
+        scheduler = app.state.checkpointer
+        if scheduler is None:
+            return []
+        return scheduler.witnessed()
 
     return app
 

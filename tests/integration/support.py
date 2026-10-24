@@ -12,6 +12,7 @@ ROOT = Path(__file__).parents[2]
 MIGRATIONS = (
     ROOT / "services/ledger/migrations/001_init.sql",
     ROOT / "services/ledger/migrations/002_l1b_registry.sql",
+    ROOT / "services/ledger/migrations/003_l3c_checkpoints.sql",
 )
 
 
