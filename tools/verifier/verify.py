@@ -12,6 +12,7 @@ from libs.blackbox_core.epochs import certificate_id, validate_contiguity, verif
 from libs.blackbox_core.evidence import Bundle, PinnedKeys
 from libs.blackbox_core.labels import derive_log_id
 from libs.blackbox_core.merkle import MerkleTree, leaf_hash, verify_consistency, verify_inclusion
+from libs.blackbox_core.receipts import verify_receipt
 from libs.blackbox_core.schemas import EpochEnd, EpochStart, Outcome, Recovery, SealedEntry
 from libs.blackbox_core.sealing import sealed_bytes, verify_entry
 from libs.blackbox_core.signing import structure_hash, verify_structure
@@ -318,6 +319,10 @@ def verify_evidence(bundle: Bundle, pins: PinnedKeys) -> VerificationReport:
             valid = False
         if not valid:
             mark(opening.seq, "TAMPERED", "payload commitment opening failed")
+    for receipt in bundle.approvals:
+        public = pins.approver_public_keys.get(receipt.approver_id)
+        if public is None or not verify_receipt(receipt, decode_base64url(public)):
+            all_mark("TAMPERED", "approval receipt signature failed")
     return VerificationReport(
         [results[seq] for seq in sorted(results)],
         [finding.model_dump() for finding in bundle.findings],

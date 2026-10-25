@@ -7,6 +7,7 @@ from typing import Literal
 from pydantic import Field
 
 from libs.blackbox_core.schemas import (
+    ApprovalReceipt,
     Checkpoint,
     Cosignature,
     Count,
@@ -29,6 +30,7 @@ class PinnedKeys(StrictModel):
     witness_public_keys: dict[str, PublicKey]
     minimum_tree_size: Count = 0
     revocations: list[Revocation] = Field(default_factory=list)
+    approver_public_keys: dict[str, PublicKey] = Field(default_factory=dict)
 
 
 class CheckpointEvidence(StrictModel):
@@ -69,6 +71,7 @@ class Bundle(StrictModel):
     revocations: list[Revocation] = Field(default_factory=list)
     openings: list[Opening] = Field(default_factory=list)
     findings: list[Finding] = Field(default_factory=list)
+    approvals: list[ApprovalReceipt] = Field(default_factory=list)
 
 
 def entry_dict(entry: SealedEntry) -> dict[str, object]:
