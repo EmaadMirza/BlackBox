@@ -17,11 +17,13 @@ from pydantic import BaseModel, ConfigDict, Field, ValidationError
 from libs.blackbox_core.checkpoint import build_cosignature, verify_checkpoint
 from libs.blackbox_core.encoding import decode_base64url, decode_hash, format_timestamp
 from libs.blackbox_core.epochs import validate_contiguity, verify_epoch_certificate
+from libs.blackbox_core.heartbeat import heartbeat_matches_checkpoint, verify_heartbeat
 from libs.blackbox_core.merkle import verify_consistency
 from libs.blackbox_core.schemas import (
     Checkpoint,
     Cosignature,
     EpochCertificate,
+    Heartbeat,
     IntermediateCertificate,
     WitnessSet,
 )
@@ -54,6 +56,8 @@ class WitnessConfig:
     alarm_dir: Path | None = None
     bearer_token: str = ""
     clock: Any = None
+    heartbeat_interval_seconds: int = 5
+    heartbeat_tolerance: int = 3
 
 
 class WitnessKey:
@@ -145,6 +149,66 @@ def create_app(config: WitnessConfig | None = None, **legacy: Any) -> FastAPI:
         if log_id != config.witness_set.log_id:
             raise WitnessRefusal("wrong_log")
         return app.state.alarm_store.list(log_id)
+
+    @app.post("/v1/heartbeat")
+    async def heartbeat(request: Request) -> dict[str, str]:
+        _auth(request, config.bearer_token)
+        try:
+            value = Heartbeat.model_validate(
+                json.loads(await request.body(), object_pairs_hook=_no_duplicates)
+            )
+        except (ValueError, TypeError, ValidationError, UnicodeDecodeError):
+            return JSONResponse(
+                {"error": {"code": "malformed", "message": "Malformed request."}}, 422
+            )
+        if value.log_id != config.witness_set.log_id:
+            raise WitnessRefusal("wrong_log")
+        epoch = epochs.get(value.epoch_id)
+        intermediate = intermediates.get(epoch.intermediate_id) if epoch else None
+        if (
+            epoch is None
+            or intermediate is None
+            or not verify_epoch_certificate(epoch, intermediate, root, value.signer_timestamp)
+        ):
+            raise WitnessRefusal("bad_cert_chain")
+        if not verify_heartbeat(
+            value,
+            decode_base64url(epoch.epoch_public_key),
+            _now(config),
+            epoch.valid_from,
+            epoch.valid_until,
+        ):
+            raise WitnessRefusal("bad_signature")
+        checkpoint_raw = app.state.store.read(value.log_id)
+        checkpoint = (
+            Checkpoint.model_validate(checkpoint_raw["checkpoint"]) if checkpoint_raw else None
+        )
+        if checkpoint is not None and not heartbeat_matches_checkpoint(value, checkpoint):
+            emit(
+                "HEARTBEAT_MISMATCH",
+                structure_hash(value),
+                store=app.state.alarm_store,
+                log_id=value.log_id,
+                timestamp=_now(config),
+            )
+        app.state.last_heartbeat = value
+        return {"status": "accepted"}
+
+    @app.post("/v1/monitor")
+    async def monitor(request: Request) -> dict[str, object]:
+        _auth(request, config.bearer_token)
+        now = request.query_params.get("now") or _now(config)
+        last = getattr(app.state, "last_heartbeat", None)
+        if last is None:
+            emit(
+                "HEARTBEAT_STALL",
+                "none",
+                store=app.state.alarm_store,
+                log_id=config.witness_set.log_id,
+                timestamp=now,
+            )
+            return {"alarms": ["HEARTBEAT_STALL"]}
+        return {"alarms": []}
 
     @app.post("/v1/checkpoint")
     async def checkpoint(request: Request) -> dict[str, object]:
