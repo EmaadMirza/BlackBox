@@ -7,9 +7,10 @@ import os
 import pytest
 from fastapi.testclient import TestClient
 
-from libs.blackbox_core.encoding import encode_base64url
+from libs.blackbox_core.checkpoint import WitnessedCheckpointEvidence
+from libs.blackbox_core.encoding import decode_base64url, encode_base64url
 from libs.blackbox_core.evidence import Bundle, PinnedKeys
-from libs.blackbox_core.schemas import WitnessIdentity, WitnessSet
+from libs.blackbox_core.schemas import Checkpoint, Cosignature, WitnessIdentity, WitnessSet
 from libs.blackbox_core.signing import sign_structure
 from services.ledger.checkpointer import InProcessSignerTransport
 from services.ledger.main import create_app
@@ -107,13 +108,26 @@ def test_real_postgres_fanout_quorum_and_offline_bundle(monkeypatch, tmp_path):
             assert witnessed.status_code == 200
             assert len(witnessed.json()) == 1
             assert len(witnessed.json()[0]["cosignatures"]) == 3
+            evidence = WitnessedCheckpointEvidence(
+                checkpoint=Checkpoint.model_validate(witnessed.json()[0]["checkpoint"]),
+                cosignatures=[
+                    Cosignature.model_validate(item) for item in witnessed.json()[0]["cosignatures"]
+                ],
+                witness_set=witness_set,
+                root_public_key=decode_base64url(pins.root_public_key),
+                intermediate_certificate=material[4],
+                epoch_certificate=material[5],
+            )
+            assert evidence.covers(0, log_id)
             bundle_response = client.get("/bundle", params={"from": 0, "to": 0}, headers=AUTH)
             assert bundle_response.status_code == 200, bundle_response.text
             bundle = Bundle.model_validate(bundle_response.json())
             assert verify_evidence(bundle, PinnedKeys.model_validate(pins)).verdict == "VERIFIED"
     finally:
         signer_client.close()
+        app.state.pool.close()
         ledger_client.close()
+        ledger_client.app.state.pool.close()
         for client in witnesses.values():
             client.close()
 
@@ -145,6 +159,98 @@ def test_quorum_requires_distinct_valid_members(tmp_path, monkeypatch):
             assert client.get("/checkpoint/witnessed", headers=AUTH).json() == []
     finally:
         signer_client.close()
+        app.state.pool.close()
         ledger_client.close()
+        ledger_client.app.state.pool.close()
         for client in witnesses.values():
             client.close()
+
+
+class Down:
+    def get(self, *args, **kwargs):
+        raise ConnectionError("witness stopped")
+
+    def post(self, *args, **kwargs):
+        raise ConnectionError("witness stopped")
+
+
+def test_one_witness_down_quorum_holds_and_alarm_is_recorded(tmp_path, monkeypatch):
+    material, _, ledger_client, signer = _setup(monkeypatch, tmp_path)
+    _, _, _, log_id, _, _, _, _ = material
+    _drain(
+        delivery.DeliveryWorker(
+            signer, InProcessPostgresTransport(ledger_client), bearer_token="ledger-token"
+        ),
+        1,
+    )
+    witnesses, witness_set = _witnesses(material, tmp_path)
+    witnesses["w2"] = Down()
+    signer_client = TestClient(create_signer_app(sealer=signer))
+    os.environ["SIGNER_AUTH_TOKEN"] = "signer-token"
+    app = create_app(
+        signer_transport=InProcessSignerTransport(
+            signer_client, head_provider=lambda: _signer_head(log_id)
+        ),
+        checkpoint_log_id=log_id,
+        witnesses=witnesses,
+        witness_set=witness_set,
+        witness_bearer_token="witness-token",
+    )
+    try:
+        with TestClient(app) as client:
+            assert client.post("/checkpoint/now", headers=AUTH).status_code == 200
+            assert len(client.get("/checkpoint/witnessed", headers=AUTH).json()) == 1
+        assert any(
+            row[0] == "WITNESS_REFUSAL"
+            for row in __import__("tests.integration.support", fromlist=["execute"]).execute(
+                "SELECT code FROM blackbox.alarms"
+            )
+        )
+    finally:
+        signer_client.close()
+        app.state.pool.close()
+        ledger_client.close()
+        ledger_client.app.state.pool.close()
+        for client in witnesses.values():
+            if hasattr(client, "close"):
+                client.close()
+
+
+def test_two_witnesses_down_then_recovery_catches_up_without_conflict(tmp_path, monkeypatch):
+    material, _, ledger_client, signer = _setup(monkeypatch, tmp_path)
+    _, _, _, log_id, _, _, _, _ = material
+    _drain(
+        delivery.DeliveryWorker(
+            signer, InProcessPostgresTransport(ledger_client), bearer_token="ledger-token"
+        ),
+        1,
+    )
+    witnesses, witness_set = _witnesses(material, tmp_path)
+    recovered1, recovered2 = witnesses["w1"], witnesses["w2"]
+    witnesses["w1"] = Down()
+    witnesses["w2"] = Down()
+    signer_client = TestClient(create_signer_app(sealer=signer))
+    os.environ["SIGNER_AUTH_TOKEN"] = "signer-token"
+    app = create_app(
+        signer_transport=InProcessSignerTransport(
+            signer_client, head_provider=lambda: _signer_head(log_id)
+        ),
+        checkpoint_log_id=log_id,
+        witnesses=witnesses,
+        witness_set=witness_set,
+        witness_bearer_token="witness-token",
+    )
+    try:
+        with TestClient(app) as client:
+            assert client.post("/checkpoint/now", headers=AUTH).status_code == 200
+            assert client.get("/checkpoint/witnessed", headers=AUTH).json() == []
+            witnesses["w1"], witnesses["w2"] = recovered1, recovered2
+            assert client.post("/checkpoint/now", headers=AUTH).status_code == 200
+            witnessed = client.get("/checkpoint/witnessed", headers=AUTH).json()
+            assert len(witnessed) == 1
+            assert len(witnessed[0]["cosignatures"]) >= 2
+    finally:
+        signer_client.close()
+        app.state.pool.close()
+        ledger_client.close()
+        ledger_client.app.state.pool.close()

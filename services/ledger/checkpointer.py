@@ -226,10 +226,11 @@ class CheckpointScheduler:
                 )
         return result
 
-    def _fan_out(self, checkpoint: Checkpoint) -> None:
+    def _fan_out(self, checkpoint: Checkpoint) -> int:
         if not self.witnesses or self.witness_set is None:
-            return
+            return 0
         checkpoint_hash = structure_hash(checkpoint)
+        collected: set[str] = set()
         for witness_id, client in self.witnesses.items():
             try:
                 state_response = client.get(
@@ -284,8 +285,21 @@ class CheckpointScheduler:
                                 Jsonb(cosignature.model_dump(mode="json")),
                             ),
                         )
+                collected.add(cosignature.witness_id)
             except Exception:
                 self._witness_alarm(witness_id, checkpoint_hash, {"code": "witness_unavailable"})
+        if len(collected) < self.witness_set.quorum:
+            self._alarm(
+                "WITNESS_QUORUM_UNAVAILABLE",
+                "high",
+                "Witness quorum is unavailable.",
+                {
+                    "checkpoint_hash": checkpoint_hash,
+                    "valid_cosignatures": len(collected),
+                    "quorum": self.witness_set.quorum,
+                },
+            )
+        return len(collected)
 
     def _witness_alarm(
         self, witness_id: str, checkpoint_hash: str, details: dict[str, object]
@@ -328,6 +342,8 @@ class CheckpointScheduler:
         latest = self.latest()
         if latest is not None and latest.tree_size == head.tree_size:
             if _checkpoint_matches_head(latest, head):
+                if force:
+                    self._fan_out(latest)
                 return latest if force else None
             self._alarm(
                 "checkpoint_root_mismatch",
