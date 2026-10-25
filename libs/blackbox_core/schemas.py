@@ -88,6 +88,7 @@ class RequestAction(StrictModel):
     arguments_commitment: Hash
     idempotency_key: Hash
     payload_reference: str
+    amount_minor: int | None = Field(default=None, ge=0)
 
 
 class Policy(StrictModel):
