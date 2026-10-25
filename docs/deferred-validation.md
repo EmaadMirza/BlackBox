@@ -46,6 +46,11 @@ DK2 and DK3 remain deferred. They must not be treated as passed until Docker is
 available and `docker compose version` succeeds, followed by validation of the
 Compose files and their real cross-process/network behavior.
 
+W2a/W2b witness fan-out, failure, recovery, partition and high-risk evidence
+tests use in-process FastAPI witness instances with real local PostgreSQL for
+ledger state. They do not prove real network timeouts, process crashes,
+container partitions, TLS, or separate-host behavior; those remain DK3/deferred.
+
 The in-memory store is an additive test seam. It does not replace or weaken the
 existing Postgres implementation; `create_app()` continues to construct the
 Postgres pool when no store is injected.

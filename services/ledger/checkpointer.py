@@ -6,7 +6,7 @@ import asyncio
 import time
 from collections.abc import Callable
 from dataclasses import dataclass
-from typing import Protocol, cast
+from typing import Any, Protocol, cast
 
 from psycopg import Connection
 from psycopg.types.json import Jsonb
@@ -14,13 +14,20 @@ from psycopg_pool import ConnectionPool
 
 from libs.blackbox_core.canonical import canonicalize
 from libs.blackbox_core.chain import entry_hash
-from libs.blackbox_core.checkpoint import verify_checkpoint
+from libs.blackbox_core.checkpoint import verify_checkpoint, verify_cosignature
 from libs.blackbox_core.encoding import decode_base64url, encode_hash
 from libs.blackbox_core.merkle import root as merkle_root
-from libs.blackbox_core.schemas import Checkpoint, EpochCertificate, SealedEntry
+from libs.blackbox_core.schemas import (
+    Checkpoint,
+    Cosignature,
+    EpochCertificate,
+    SealedEntry,
+    WitnessSet,
+)
 from libs.blackbox_core.sealing import sealed_bytes
 from libs.blackbox_core.signing import structure_hash
-from services.ledger import merkle_store
+from libs.blackbox_core.witness_set import has_quorum
+from services.ledger import merkle_store, proofs
 from services.ledger.proofs import ProofError
 from services.signer.clock import system_utc_now
 
@@ -129,6 +136,10 @@ class CheckpointScheduler:
         timestamp: Callable[[], str] = system_utc_now,
         interval_seconds: float = DEFAULT_INTERVAL_SECONDS,
         entry_interval: int = DEFAULT_ENTRY_INTERVAL,
+        witnesses: dict[str, object] | None = None,
+        witness_set: WitnessSet | None = None,
+        witness_bearer_token: str = "",
+        witness_timeout: float = 2.0,
     ) -> None:
         if type(interval_seconds) not in (int, float) or interval_seconds <= 0:
             raise ValueError("interval_seconds must be positive")
@@ -142,6 +153,10 @@ class CheckpointScheduler:
         self.timestamp = timestamp
         self.interval_seconds = float(interval_seconds)
         self.entry_interval = entry_interval
+        self.witnesses: dict[str, Any] = witnesses or {}
+        self.witness_set = witness_set
+        self.witness_bearer_token = witness_bearer_token
+        self.witness_timeout = witness_timeout
         self.last_alarm: str | None = None
         self._last_attempt_at: float | None = None
         self._blocked_head: tuple[object, ...] | None = None
@@ -195,7 +210,123 @@ class CheckpointScheduler:
                 {"checkpoint": checkpoint.model_dump(), "cosignatures": []},
             )
             cast(list[object], item["cosignatures"]).append(raw_cosignature)
-        return list(grouped.values())
+        result = []
+        for item in grouped.values():
+            checkpoint = Checkpoint.model_validate(item["checkpoint"])
+            cosigs = [
+                Cosignature.model_validate(value)
+                for value in cast(list[object], item["cosignatures"])
+            ]
+            if self.witness_set is not None and has_quorum(checkpoint, cosigs, self.witness_set):
+                result.append(
+                    {
+                        "checkpoint": checkpoint.model_dump(mode="json"),
+                        "cosignatures": [c.model_dump(mode="json") for c in cosigs],
+                    }
+                )
+        return result
+
+    def _fan_out(self, checkpoint: Checkpoint) -> int:
+        if not self.witnesses or self.witness_set is None:
+            return 0
+        checkpoint_hash = structure_hash(checkpoint)
+        collected: set[str] = set()
+        for witness_id, client in self.witnesses.items():
+            try:
+                state_response = client.get(
+                    "/v1/state",
+                    params={"log_id": checkpoint.log_id},
+                    headers={"Authorization": f"Bearer {self.witness_bearer_token}"},
+                    timeout=self.witness_timeout,
+                )
+                from_size = int(state_response.json().get("tree_size") or 0)
+                proof = []
+                if from_size and from_size < checkpoint.tree_size:
+                    proof = __import__(
+                        "services.ledger.proofs", fromlist=["consistency"]
+                    ).consistency(_load_proof_leaves(self.pool), from_size, checkpoint.tree_size)
+                response = client.post(
+                    "/v1/checkpoint",
+                    json={
+                        "log_id": checkpoint.log_id,
+                        "checkpoint": checkpoint.model_dump(mode="json"),
+                        "from_size": from_size,
+                        "consistency_proof": proof,
+                    },
+                    headers={"Authorization": f"Bearer {self.witness_bearer_token}"},
+                    timeout=self.witness_timeout,
+                )
+                if response.status_code != 200:
+                    self._witness_alarm(witness_id, checkpoint_hash, response.json())
+                    continue
+                cosignature = Cosignature.model_validate(response.json())
+                public = next(
+                    (
+                        item.public_key
+                        for item in self.witness_set.witnesses
+                        if item.witness_id == cosignature.witness_id
+                    ),
+                    None,
+                )
+                if (
+                    public is None
+                    or cosignature.checkpoint_hash != checkpoint_hash
+                    or not verify_cosignature(cosignature, decode_base64url(public))
+                ):
+                    self._witness_alarm(witness_id, checkpoint_hash, {"code": "bad_cosignature"})
+                    continue
+                with self.pool.connection() as connection:
+                    with connection.transaction():
+                        connection.execute(
+                            "INSERT INTO blackbox.cosignatures(checkpoint_hash, witness_id, cosignature) VALUES (%s, %s, %s) ON CONFLICT DO NOTHING",
+                            (
+                                checkpoint_hash,
+                                cosignature.witness_id,
+                                Jsonb(cosignature.model_dump(mode="json")),
+                            ),
+                        )
+                collected.add(cosignature.witness_id)
+            except Exception:
+                self._witness_alarm(witness_id, checkpoint_hash, {"code": "witness_unavailable"})
+        if len(collected) < self.witness_set.quorum:
+            self._alarm(
+                "WITNESS_QUORUM_UNAVAILABLE",
+                "high",
+                "Witness quorum is unavailable.",
+                {
+                    "checkpoint_hash": checkpoint_hash,
+                    "valid_cosignatures": len(collected),
+                    "quorum": self.witness_set.quorum,
+                },
+            )
+        return len(collected)
+
+    def _witness_alarm(
+        self, witness_id: str, checkpoint_hash: str, details: dict[str, object]
+    ) -> None:
+        with self.pool.connection() as connection:
+            with connection.transaction():
+                exists = connection.execute(
+                    "SELECT 1 FROM blackbox.alarms WHERE log_id=%s AND code=%s AND details->>'checkpoint_hash'=%s AND details->>'witness_id'=%s",
+                    (self.log_id, "WITNESS_REFUSAL", checkpoint_hash, witness_id),
+                ).fetchone()
+                if exists is None:
+                    connection.execute(
+                        "INSERT INTO blackbox.alarms(log_id, code, severity, message, details) VALUES (%s, %s, %s, %s, %s)",
+                        (
+                            self.log_id,
+                            "WITNESS_REFUSAL",
+                            "critical",
+                            "Witness refused checkpoint.",
+                            Jsonb(
+                                {
+                                    "checkpoint_hash": checkpoint_hash,
+                                    "witness_id": witness_id,
+                                    **details,
+                                }
+                            ),
+                        ),
+                    )
 
     def _attempt(self, *, force: bool) -> Checkpoint | None:
         try:
@@ -211,6 +342,8 @@ class CheckpointScheduler:
         latest = self.latest()
         if latest is not None and latest.tree_size == head.tree_size:
             if _checkpoint_matches_head(latest, head):
+                if force:
+                    self._fan_out(latest)
                 return latest if force else None
             self._alarm(
                 "checkpoint_root_mismatch",
@@ -267,7 +400,9 @@ class CheckpointScheduler:
 
         try:
             _validate_signed_checkpoint(self.pool, signed, head)
-            return _store_checkpoint(self.pool, signed)
+            stored = _store_checkpoint(self.pool, signed)
+            self._fan_out(stored)
+            return stored
         except CheckpointStateError as exc:
             self._alarm(exc.code, "critical", exc.message, {}, head)
             return None
@@ -457,3 +592,8 @@ def _head_matches(head: LedgerHead, signer: SignerHead) -> bool:
         and head.latest_entry_hash == signer.latest_entry_hash
         and head.epoch_id == signer.epoch_id
     )
+
+
+def _load_proof_leaves(pool: ConnectionPool) -> list[bytes]:
+    with pool.connection() as connection:
+        return proofs.load_leaves(connection)

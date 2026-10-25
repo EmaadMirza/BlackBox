@@ -68,6 +68,9 @@ def create_app(
     bundle_log_id: str | None = None,
     bundle_log_name: str | None = None,
     bundle_witness_set: WitnessSet | None = None,
+    witnesses: dict[str, object] | None = None,
+    witness_set: WitnessSet | None = None,
+    witness_bearer_token: str = "",
 ) -> FastAPI:
     app = FastAPI(lifespan=_lifespan)
     app.state.store = store
@@ -93,6 +96,9 @@ def create_app(
                 bearer_token=os.environ.get("SIGNER_AUTH_TOKEN", "signer-token"),
                 clock=checkpoint_clock or __import__("time").monotonic,
                 entry_interval=checkpoint_entry_interval,
+                witnesses=witnesses,
+                witness_set=witness_set,
+                witness_bearer_token=witness_bearer_token,
             )
 
     @app.exception_handler(LedgerHTTPError)
