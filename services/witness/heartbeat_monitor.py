@@ -24,3 +24,19 @@ def inspect(
     if heartbeat.signer_timestamp > now:
         alarms.append("HEARTBEAT_STALL")
     return alarms
+
+
+def checkpoint_stall(
+    heartbeat: Heartbeat | None,
+    checkpoint: Checkpoint | None,
+    now: str,
+    *,
+    interval_seconds: int = 5,
+    tolerance: int = 3,
+    unverified_window: int = 0,
+) -> list[str]:
+    if heartbeat is None or checkpoint is None:
+        return []
+    if heartbeat.signer_timestamp <= now and heartbeat.latest_seq <= checkpoint.latest_seq:
+        return ["CHECKPOINT_STALL"] if unverified_window >= interval_seconds * tolerance else []
+    return []
