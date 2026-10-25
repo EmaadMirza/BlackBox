@@ -142,6 +142,21 @@ def create_app(config: WitnessConfig | None = None, **legacy: Any) -> FastAPI:
             return {"log_id": log_id, "tree_size": 0, "root_hash": None, "epoch_id": None}
         return {key: raw[key] for key in ("log_id", "tree_size", "root_hash", "epoch_id")}
 
+    @app.get("/v1/latest")
+    async def latest(request: Request) -> dict[str, object]:
+        _auth(request, config.bearer_token)
+        log_id = request.query_params.get("log_id")
+        if log_id != config.witness_set.log_id:
+            raise WitnessRefusal("wrong_log")
+        raw = app.state.store.read(log_id)
+        if raw is None:
+            return {"log_id": log_id, "checkpoint": None, "cosignature": None}
+        return {
+            "log_id": log_id,
+            "checkpoint": raw["checkpoint"],
+            "cosignature": raw["cosignature"],
+        }
+
     @app.get("/v1/alarms")
     async def alarms(request: Request) -> list[dict[str, object]]:
         _auth(request, config.bearer_token)
