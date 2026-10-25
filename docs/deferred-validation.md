@@ -23,6 +23,13 @@ checkpoint scheduler or witness service.
 
 ## Docker/Postgres validation still required
 
+Docker-dependent validation is intentionally deferred; Docker was not run for L4b.
+The Compose files awaiting that validation are:
+
+- `docker-compose.yml`
+- `docker-compose.provider.yml`
+- `deploy/witness-host/docker-compose.yml`
+
 The following claims remain deferred to the Docker stage:
 
 - PostgreSQL append-only triggers and `ledger_app` role behavior are covered for
@@ -34,6 +41,10 @@ The following claims remain deferred to the Docker stage:
   service health behavior are correct;
 - power-loss behavior and recovery across the signer filesystem and Postgres are
   not demonstrated by the in-process tests.
+
+DK2 and DK3 remain deferred. They must not be treated as passed until Docker is
+available and `docker compose version` succeeds, followed by validation of the
+Compose files and their real cross-process/network behavior.
 
 The in-memory store is an additive test seam. It does not replace or weaken the
 existing Postgres implementation; `create_app()` continues to construct the

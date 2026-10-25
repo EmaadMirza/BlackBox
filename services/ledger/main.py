@@ -20,9 +20,10 @@ from libs.blackbox_core.schemas import (
     EpochCertificate,
     IntermediateCertificate,
     SealedEntry,
+    WitnessSet,
 )
 from libs.blackbox_core.sealing import verify_entry
-from services.ledger import checkpointer, db, merkle_store, proofs
+from services.ledger import bundle_export, checkpointer, db, merkle_store, proofs
 from services.ledger.store import LedgerStore, StoredEntry
 
 
@@ -64,11 +65,17 @@ def create_app(
     checkpoint_entry_interval: int = checkpointer.DEFAULT_ENTRY_INTERVAL,
     checkpoint_clock=None,
     run_checkpoint_scheduler: bool = False,
+    bundle_log_id: str | None = None,
+    bundle_log_name: str | None = None,
+    bundle_witness_set: WitnessSet | None = None,
 ) -> FastAPI:
     app = FastAPI(lifespan=_lifespan)
     app.state.store = store
     app.state.checkpointer = None
     app.state.run_checkpoint_scheduler = run_checkpoint_scheduler
+    app.state.bundle_log_id = bundle_log_id
+    app.state.bundle_log_name = bundle_log_name
+    app.state.bundle_witness_set = bundle_witness_set
     if store is None:
         app.state.pool = db.connect(os.environ.get("LEDGER_DATABASE_URL", "dbname=blackbox_ledger"))
         app.state.merkle_ready = True
@@ -147,6 +154,27 @@ def create_app(
         if not rows:
             raise LedgerHTTPError(404, "not_found", "Entry not found.")
         return rows[0].model_dump()
+
+    @app.get("/bundle")
+    async def bundle(
+        start: int = Query(alias="from"),
+        end: int = Query(alias="to"),
+        _: None = Depends(require_bearer),
+    ) -> dict[str, object]:
+        if app.state.store is not None:
+            raise LedgerHTTPError(503, "bundle_unavailable", "Bundle export is unavailable.")
+        try:
+            result = bundle_export.build_bundle(
+                app.state.pool,
+                start,
+                end,
+                log_id=app.state.bundle_log_id,
+                log_name=app.state.bundle_log_name or "",
+                witness_set=app.state.bundle_witness_set,
+            )
+        except bundle_export.BundleExportError as exc:
+            raise LedgerHTTPError(exc.status, exc.code, exc.message) from exc
+        return result.model_dump(mode="json")
 
     @app.get("/history/intent")
     async def history_intent(
