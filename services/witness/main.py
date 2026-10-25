@@ -27,6 +27,7 @@ from libs.blackbox_core.schemas import (
 )
 from libs.blackbox_core.signing import structure_hash
 from libs.blackbox_core.witness_set import verify_witness_set
+from services.witness.alarms import AlarmStore, emit
 from services.witness.store import WitnessStore, WitnessStoreError
 
 MAX_BODY = 2 * 1024 * 1024
@@ -50,6 +51,7 @@ class WitnessConfig:
     witness_key_path: Path
     state_dir: Path
     evidence_dir: Path
+    alarm_dir: Path | None = None
     bearer_token: str = ""
     clock: Any = None
 
@@ -109,10 +111,12 @@ def create_app(config: WitnessConfig | None = None, **legacy: Any) -> FastAPI:
     if witness_key.operation.public_key().public_bytes_raw() != decode_base64url(member.public_key):
         raise ValueError("witness key does not match witness set")
     store = WitnessStore(config.state_dir, config.evidence_dir)
+    alarm_store = AlarmStore(config.alarm_dir or config.evidence_dir)
     epochs = {item.epoch_id: item for item in config.epochs}
     intermediates = {item.intermediate_id: item for item in config.intermediates}
     app = FastAPI()
     app.state.store = store
+    app.state.alarm_store = alarm_store
 
     @app.exception_handler(WitnessRefusal)
     async def refusal(_: Request, exc: WitnessRefusal) -> JSONResponse:
@@ -133,6 +137,14 @@ def create_app(config: WitnessConfig | None = None, **legacy: Any) -> FastAPI:
         if raw is None:
             return {"log_id": log_id, "tree_size": 0, "root_hash": None, "epoch_id": None}
         return {key: raw[key] for key in ("log_id", "tree_size", "root_hash", "epoch_id")}
+
+    @app.get("/v1/alarms")
+    async def alarms(request: Request) -> list[dict[str, object]]:
+        _auth(request, config.bearer_token)
+        log_id = request.query_params.get("log_id")
+        if log_id != config.witness_set.log_id:
+            raise WitnessRefusal("wrong_log")
+        return app.state.alarm_store.list(log_id)
 
     @app.post("/v1/checkpoint")
     async def checkpoint(request: Request) -> dict[str, object]:
@@ -158,6 +170,13 @@ def create_app(config: WitnessConfig | None = None, **legacy: Any) -> FastAPI:
                 app.state.store.append_refusal(
                     submission.log_id, exc.code, submission.checkpoint.model_dump(mode="json")
                 )
+                emit(
+                    "WITNESS_REFUSAL",
+                    structure_hash(submission.checkpoint),
+                    store=app.state.alarm_store,
+                    log_id=submission.log_id,
+                    timestamp=_now(config),
+                )
             raise
         return cosignature.model_dump(mode="json")
 
@@ -174,6 +193,10 @@ def _auth(request: Request, expected: str) -> None:
         or not hmac.compare_digest(value[7:], expected)
     ):
         raise WitnessRefusal("witness_unavailable")
+
+
+def _now(config: WitnessConfig) -> str:
+    return (config.clock or (lambda: format_timestamp(datetime.now(timezone.utc))))()
 
 
 def _no_duplicates(pairs: list[tuple[str, object]]) -> dict[str, object]:
