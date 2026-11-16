@@ -1,9 +1,9 @@
 # Scaffold limitations and specification ambiguities
 
-Stage 1 core and the current Stage 2 signer foundations have implemented, locally
-verified behavior. The remaining service/networking and acceptance surfaces are still
-scaffolded: many function bodies raise `NotImplementedError`, HTTP operation routes
-remain incomplete, and G3/G4 acceptance tests are expected-failure placeholders.
+Stage 1 core, Stage 2 signer, ledger and witness foundations have implemented,
+locally verified behavior. Stage 3 prototype is authorized with a limited scope
+(see `AGENTS.md` § Current scope). G4 and acceptance tests E1–E12 remain
+expected-failure placeholders; an xfail test never counts as a passed gate.
 
 ## Conflicting requirements requiring a later decision
 
@@ -155,13 +155,73 @@ remain incomplete, and G3/G4 acceptance tests are expected-failure placeholders.
 - No HSM/TPM/KMS guarantees, key erasure guarantee, prompt-injection prevention,
   successful acceptance scenario, or production readiness is claimed.
 
-## Traceability
+## Known limitations — Stage 3 prototype exclusions
 
-| Future claim | Planned tests (currently XFAIL) |
-| --- | --- |
-| History integrity | G1, G2, G3; E3, E7, E8, E11 |
-| Completeness | G4; E4, E5, E6 |
-| Bounded forward forgery | E4, E6, E11 |
-| Independent verification | E1 and offline evidence in each applicable acceptance run |
-| Agent accountability | E1, E2, E10, E12 |
-| Practicality measurements | E9 (integrity criteria, performance reported) |
+The following items are explicitly out of scope for the current Stage 3 prototype.
+They are not built, not tested, and must not be claimed as passing. Each remains a
+documented limitation until a future stage authorizes it.
+
+1. **Docker/Compose validation (DK2, DK3).** The three Compose files
+   (`docker-compose.yml`, `docker-compose.provider.yml`,
+   `deploy/witness-host/docker-compose.yml`) are not validated. Container startup,
+   network isolation, volume ownership, and cross-process HTTP behavior are unproven.
+2. **Acceptance scenario E5 (agent-network bypass).** Requires Docker egress
+   control and container-level network enforcement; cannot be tested without
+   Docker.
+3. **Acceptance scenario E9 (load/performance).** Requires a fully deployed stack
+   under load (locust/wrk); integrity-under-load and latency measurement are
+   deferred.
+4. **Acceptance scenario E11 (stolen epoch key / rogue epoch / HSM).** Requires
+   HSM/KMS custody to demonstrate bounded forward forgery; process-level key
+   custody cannot prove key zeroization or hardware isolation.
+5. **HSM/KMS/TPM key custody and key zeroization.** Python process memory cannot
+   guarantee private-key zeroization. Production custody requires HSM/KMS/TPM
+   integration that is not implemented.
+6. **Anchor service (`services/anchor`).** OpenTimestamps and public Git
+   anchoring are optional and not on the critical path; all three endpoint stubs
+   remain `NotImplementedError`.
+7. **Task E full recovery.** Durable recovery quarantine, startup-enforced
+   recovery anchor, and the two recovery outcomes (same-log continuation,
+   new-log restart) described in `docs/task-e-addendum.md` are not implemented.
+   Recovery remains fail-closed with manual operator intervention.
+8. **Task E2b (issuance journal).** The crash/lost-response journal for
+   signer-to-ledger reconciliation is not implemented. Lost rollover responses
+   and durable reconciliation remain pending.
+9. **Task R (automated operator rebuild tool).** No rebuild command exists.
+   Recovery from a pre-commit marker requires the deployment's approved recovery
+   tooling or a controlled maintenance script, as documented in
+   `docs/task-c-recovery.md`.
+10. **mTLS and directional caller-/operation-specific authorization.** The shared
+    bearer token is an interim transport credential. Network membership is not
+    authentication. The gateway/ledger ingress conflict (§6.2 vs §10.3) is not
+    resolved by this prototype.
+11. **Power-loss injection tests.** No power-loss, filesystem-failure, or
+    device-failure injection has been performed against the signer filesystem or
+    PostgreSQL. Crash-point coverage is analysis-based (`docs/task-c-recovery.md`),
+    not empirical.
+
+## Security Claims and Test Mapping
+
+### Verified Claims
+
+| Claim | Description | Proving Tests |
+| --- | --- | --- |
+| **Tamper Evidence & History Integrity** | Any mutation or deletion in sealed ledger history is detected and refused. | `tests/gates/test_g1_tamper.py`<br>`tests/gates/test_g2_merkle.py`<br>`tests/gates/test_g3.py`<br>`tests/gates/test_g3_witness_refusal.py`<br>`tests/acceptance/test_e03.py`<br>`tests/acceptance/test_e08.py` |
+| **Witness Quorum & Split-View Defense** | Checkpoints require distinct witness quorum (2/3); conflicting roots for same tree size trigger `SPLIT_VIEW`. | `tests/acceptance/test_e06.py`<br>`tests/acceptance/test_e07.py`<br>`tests/unit/test_w4_gossip.py`<br>`tests/unit/test_witness_http_processor.py` |
+| **Attestation Binding & Body Integrity** | Provider recomputes raw request-body digest and rejects mismatched attestations; signer refuses unsealed intents. | `tests/gates/test_g4.py`<br>`tests/acceptance/test_e04.py`<br>`tests/unit/test_attestation.py` |
+| **Approval Guardrails & Nonce Freshness** | Self-approvals, altered argument commitments, reused nonces, and expired keys/receipts fail closed as `blocked` ledger entries. | `tests/acceptance/test_e02.py`<br>`tests/acceptance/test_e10.py`<br>`tests/unit/test_po2_approval.py` |
+| **Tool Definition Integrity** | Unauthorized modification of session tool definitions triggers `TOOL_DEF_CHANGE` and fails closed without provider effect. | `tests/acceptance/test_e12.py` |
+| **Independent Offline Verification** | Pinned public keys verify Merkle inclusion, hash chain continuity, and certificate chains without connecting to the deployment. | `tests/acceptance/test_e01.py`<br>`tests/unit/test_verifier.py`<br>`tools/verifier/` |
+| **Reconciler Verification** | Read-only join between ledger and provider event logs flags `UNRECORDED_ACTION`, `UNATTESTED_ACTION`, `PHANTOM_OUTCOME`, `ORPHAN_INTENT`, `ARGS_MISMATCH`. | `tests/acceptance/test_e01.py`<br>`tests/acceptance/test_e03.py`<br>`tests/acceptance/test_e04.py` |
+
+### Not Claimed (Out of Prototype Scope)
+
+The following claims are **not proven** and are **not claimed** by this prototype:
+
+| Unproven Claim | Reason / Missing Infrastructure | Tracked Acceptance Scenario (XFAIL) |
+| --- | --- | --- |
+| **Network Egress Isolation** | Requires Docker/Compose container egress control and firewall enforcement. | `tests/acceptance/test_e05.py` |
+| **Performance Under Load** | Throughput, latency percentiles (p50/p95/p99), and integrity under stress require full load-test infrastructure. | `tests/acceptance/test_e09.py` |
+| **Hardware Key Custody & Zeroization** | Bounded forward forgery under key theft requires HSM/KMS/TPM hardware custody; Python memory cannot guarantee key zeroization. | `tests/acceptance/test_e11.py` |
+| **Public Anchor Durability** | OpenTimestamps and public Git anchoring (`services/anchor`) are not implemented. | Deferred to Stage 5 |
+| **Crash / Lost-Response Reconciliation** | Signer-to-ledger issuance journal (Task E2b) and automated operator rebuild tool (Task R) are not implemented. | Recovery remains fail-closed |

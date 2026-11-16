@@ -44,8 +44,9 @@ class PayloadStore:
             raise ValueError("invalid reference")
         return self.state_dir / f"{reference}.json"
 
-    def put(self, value: bytes) -> tuple[str, str]:
-        salt = create_salt()
+    def put(self, value: bytes, *, salt: bytes | None = None) -> tuple[str, str]:
+        if salt is None:
+            salt = create_salt()
         reference = secrets.token_urlsafe(18)
         payload = {
             "reference": reference,

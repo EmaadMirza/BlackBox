@@ -10,8 +10,6 @@ from libs.blackbox_core import schemas
 from libs.blackbox_core.receipts import verify_receipt
 from services.approval.registry import ApproverRegistry
 
-# TODO(spec §13.5): implement and validate before enabling this module.
-
 
 class ApprovalVerificationError(ValueError):
     pass
@@ -33,7 +31,14 @@ class ApprovalVerifier:
         if receipt.arguments_commitment != arguments_commitment:
             raise ApprovalVerificationError("arguments commitment mismatch")
         try:
-            public_key = self.registry.get(receipt.approver_id)
+            entry = (
+                self.registry.get_entry(receipt.approver_id)
+                if hasattr(self.registry, "get_entry")
+                else (self.registry.get(receipt.approver_id), None)
+            )
+            public_key, valid_until = entry
+            if valid_until is not None and valid_until <= self.clock():
+                raise ApprovalVerificationError("approver key expired")
         except KeyError as exc:
             raise ApprovalVerificationError("approver is not registered") from exc
         if not verify_receipt(receipt, public_key):

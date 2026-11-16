@@ -6,7 +6,7 @@ BUNDLE ?= artifacts/bundle.json
 PINNED_KEYS ?= artifacts/pinned-keys.json
 DEMO_OUTPUT ?= artifacts
 
-.PHONY: up down test test-integration gates attack bench lint verify demo-bundle
+.PHONY: up down test test-integration gates attack bench lint verify demo-bundle demo
 up:
 	docker compose up --build -d
 	docker compose -f docker-compose.provider.yml up --build -d
@@ -39,3 +39,7 @@ verify:
 
 demo-bundle:
 	$(PYTHON) -m tools.demo_bundle --output "$(DEMO_OUTPUT)"
+
+demo:
+	$(PYTHON) -W ignore demo.py
+
