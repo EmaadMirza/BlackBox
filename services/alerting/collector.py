@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
 from pathlib import Path
 
 from fastapi import FastAPI, Request
@@ -50,7 +51,11 @@ class AlarmCollector:
 
 def create_app(*, collector: AlarmCollector | None = None, bearer_token: str = "") -> FastAPI:
     app = FastAPI(title="BlackBox Alerting Service")
-    active_collector = collector if collector is not None else AlarmCollector()
+    active_collector = (
+        collector
+        if collector is not None
+        else AlarmCollector(Path(os.environ.get("ALARM_LOG_PATH", "/tmp/alarms.log")))
+    )
     app.state.collector = active_collector
 
     @app.get("/health")

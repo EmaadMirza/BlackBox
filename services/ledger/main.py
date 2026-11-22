@@ -80,13 +80,21 @@ def create_app(
     app.state.bundle_log_name = bundle_log_name
     app.state.bundle_witness_set = bundle_witness_set
     if store is None:
-        db_url = (
-            os.environ.get("LEDGER_DATABASE_URL")
-            or os.environ.get("DATABASE_URL")
-            or "dbname=blackbox_ledger"
-        )
-        if db_url.startswith("postgresql+asyncpg://"):
-            db_url = "postgresql://" + db_url[len("postgresql+asyncpg://") :]
+        if "POSTGRES_HOST" in os.environ:
+            host = os.environ.get("POSTGRES_HOST", "ledger-db")
+            port = os.environ.get("POSTGRES_PORT", "5432")
+            user = os.environ.get("POSTGRES_USER", "pankaj")
+            password = os.environ.get("POSTGRES_PASSWORD", "Pankaj@123")
+            dbname = os.environ.get("POSTGRES_DB", "blackbox_ledger")
+            db_url = f"host={host} port={port} dbname={dbname} user={user} password={password}"
+        else:
+            db_url = (
+                os.environ.get("LEDGER_DATABASE_URL")
+                or os.environ.get("DATABASE_URL")
+                or "dbname=blackbox_ledger"
+            )
+            if db_url.startswith("postgresql+asyncpg://"):
+                db_url = "postgresql://" + db_url[len("postgresql+asyncpg://") :]
         app.state.pool = db.connect(db_url)
         app.state.merkle_ready = True
         app.state.merkle_error = None

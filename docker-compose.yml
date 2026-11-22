@@ -45,8 +45,11 @@ services:
     build: {context: ., dockerfile: services/ledger/Dockerfile}
     networks: [seal_net, witness_net, read_net]
     environment:
-      LEDGER_DATABASE_URL: ${LEDGER_DATABASE_URL:-postgresql://blackbox_admin:CHANGE_ME_LEDGER_ADMIN@ledger-db:5432/blackbox}
-      DATABASE_URL: ${LEDGER_DATABASE_URL:-postgresql://blackbox_admin:CHANGE_ME_LEDGER_ADMIN@ledger-db:5432/blackbox}
+      POSTGRES_HOST: ledger-db
+      POSTGRES_PORT: 5432
+      POSTGRES_USER: ${POSTGRES_USER:-pankaj}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-Pankaj@123}
+      POSTGRES_DB: ${POSTGRES_DB:-blackbox_ledger}
       WITNESS_URLS: http://witness-1:8000,http://witness-2:8000,http://witness-3:8000
     depends_on:
       ledger-db:
@@ -57,9 +60,9 @@ services:
     networks: [seal_net]
     ports: ["127.0.0.1:${LEDGER_DB_PORT:-55432}:5432"]
     environment:
-      POSTGRES_DB: ${POSTGRES_DB:-blackbox}
-      POSTGRES_USER: ${POSTGRES_USER:-blackbox_admin}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-CHANGE_ME_LEDGER_ADMIN}
+      POSTGRES_DB: ${POSTGRES_DB:-blackbox_ledger}
+      POSTGRES_USER: ${POSTGRES_USER:-pankaj}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-Pankaj@123}
     volumes: ["ledger_db:/var/lib/postgresql/data", "./services/ledger/migrations:/docker-entrypoint-initdb.d:ro"]
     healthcheck:
       test: [CMD-SHELL, 'pg_isready -U "$${POSTGRES_USER}" -d "$${POSTGRES_DB}"']
@@ -84,12 +87,14 @@ services:
     <<: *app
     build: {context: ., dockerfile: services/payload_store/Dockerfile}
     networks: [seal_net]
+    environment:
+      PAYLOAD_DATA_DIR: /var/lib/blackbox/payloads
     volumes: [payload_data:/var/lib/blackbox/payloads]
   provider_mock:
     <<: *app
     build: {context: ., dockerfile: services/provider_mock/Dockerfile}
     networks: [downstream_net]
-    ports: ["127.0.0.1:8080:8000"]
+    ports: ["127.0.0.1:${PROVIDER_MOCK_PORT:-8085}:8000"]
   reconciler:
     <<: *app
     build: {context: ., dockerfile: services/reconciler/Dockerfile}
@@ -110,6 +115,8 @@ services:
     <<: *app
     build: {context: ., dockerfile: services/alerting/Dockerfile}
     networks: [read_net, enforce_net, witness_net, seal_net]
+    environment:
+      ALARM_LOG_PATH: /tmp/alarms.log
   agent:
     <<: *app
     build: {context: ., dockerfile: services/gateway/Dockerfile}
@@ -144,12 +151,11 @@ services:
     volumes: [witness_3_data:/var/lib/blackbox/witness, witness_3_keys:/run/blackbox/witness-keys:ro]
 
 networks:
-  agent_net: {internal: true}
+  agent_net: {}
   enforce_net: {internal: true}
   seal_net: {internal: true}
   downstream_net:
     name: ${BLACKBOX_DOWNSTREAM_NETWORK:-blackbox_downstream}
-    internal: true
   witness_net: {internal: true}
   read_net: {internal: true}
 

@@ -134,7 +134,7 @@ def create_app(
         )
         provider_client = RemoteProviderClient(os.environ["PROVIDER_URL"])
         payload_store = payload_store or PayloadStore(
-            Path(os.environ.get("PAYLOAD_STORE_PATH", "data/payload_store"))
+            Path(os.environ.get("PAYLOAD_STORE_PATH", "/tmp/gateway_payload_store"))
         )
         rules_path = Path("services/gateway/policy/rules.yaml")
         rules = load_rules(rules_path) if rules_path.exists() else []

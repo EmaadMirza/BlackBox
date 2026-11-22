@@ -16,8 +16,17 @@ class ProviderEventLog:
     def __init__(self, state_dir: Path | None = None) -> None:
         self.state_dir = state_dir
         if self.state_dir is not None:
-            self.state_dir.mkdir(mode=0o700, parents=True, exist_ok=True)
-            self.log_file = self.state_dir / "events.jsonl"
+            try:
+                self.state_dir.mkdir(mode=0o700, parents=True, exist_ok=True)
+                self.log_file = self.state_dir / "events.jsonl"
+            except OSError:
+                tmp_path = Path("/tmp/provider-events")
+                try:
+                    tmp_path.mkdir(mode=0o700, parents=True, exist_ok=True)
+                    self.state_dir = tmp_path
+                    self.log_file = tmp_path / "events.jsonl"
+                except OSError:
+                    self.log_file = None
         else:
             self.log_file = None
         self._events: list[dict[str, Any]] = []
@@ -73,7 +82,7 @@ class ProviderEventLog:
         return result
 
 
-_default = ProviderEventLog(Path("provider-events"))
+_default = ProviderEventLog()
 
 
 async def append_event(

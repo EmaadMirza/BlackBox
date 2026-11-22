@@ -5,6 +5,7 @@ from __future__ import annotations
 import base64
 import hmac
 import json
+import os
 import secrets
 from pathlib import Path
 from typing import Any
@@ -96,7 +97,14 @@ def _auth(request: Request, token: str) -> bool:
 
 
 def create_app(store: PayloadStore | None = None) -> FastAPI:
-    store = store or PayloadStore(Path("payload-state"))
+    if store is None:
+        if "PAYLOAD_DATA_DIR" in os.environ:
+            state_dir = Path(os.environ["PAYLOAD_DATA_DIR"])
+        elif Path("/var/lib/blackbox/payloads").exists() or Path("/var/lib/blackbox").exists():
+            state_dir = Path("/var/lib/blackbox/payloads")
+        else:
+            state_dir = Path("payload-state")
+        store = PayloadStore(state_dir)
     app = FastAPI()
 
     @app.get("/health")
