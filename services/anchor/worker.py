@@ -37,9 +37,6 @@ class AnchorWorker:
         self.bearer_token = (
             bearer_token if bearer_token is not None else os.environ.get("LEDGER_BEARER_TOKEN", "")
         )
-        self.bearer_token = (
-            bearer_token if bearer_token is not None else os.environ.get("LEDGER_BEARER_TOKEN", "")
-        )
         self.git_backend = git_backend or GitAnchorBackend(
             repo_path or Path("/tmp/blackbox_anchors_git")
         )

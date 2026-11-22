@@ -9,7 +9,13 @@ from libs.blackbox_core import schemas
 from libs.blackbox_core.canonical import loads
 from libs.blackbox_core.errors import SignerRuleError
 from libs.blackbox_core.schemas import SealedEntry, parse_entry
-from services.signer.auth import SignerHTTPError, install_error_handlers, require_bearer
+from services.signer.auth import (
+    SignerHTTPError,
+    install_error_handlers,
+    require_gateway,
+    require_internal,
+    require_ledger,
+)
 from services.signer.epoch_manager import EpochUnavailableError
 from services.signer.history import HistoryIntegrityError, HistorySourceError, OutcomeConflictError
 from services.signer.http_contract import (
@@ -62,7 +68,7 @@ async def health(request: Request) -> dict[str, str]:
     return signer_health(getattr(request.app.state, "sealer", None))
 
 
-async def seal_http(request: Request, _: None = Depends(require_bearer)) -> SealedEntry:
+async def seal_http(request: Request, _: None = Depends(require_gateway)) -> SealedEntry:
     """Authenticate, validate and delegate one raw candidate to the signer."""
 
     signer = getattr(request.app.state, "sealer", None)
@@ -119,7 +125,7 @@ async def seal_http(request: Request, _: None = Depends(require_bearer)) -> Seal
         raise SignerHTTPError(500, "internal_error", "Internal error.") from exc
 
 
-async def attest_http(request: Request, _: None = Depends(require_bearer)) -> dict:
+async def attest_http(request: Request, _: None = Depends(require_gateway)) -> dict:
     signer = getattr(request.app.state, "sealer", None)
     if signer is None:
         raise SignerHTTPError(503, "signer_unavailable", "Signer unavailable.")
@@ -145,7 +151,7 @@ async def attest_http(request: Request, _: None = Depends(require_bearer)) -> di
         raise SignerHTTPError(500, "internal_error", "Internal error.") from exc
 
 
-async def checkpoint_http(request: Request, _: None = Depends(require_bearer)) -> dict:
+async def checkpoint_http(request: Request, _: None = Depends(require_ledger)) -> dict:
     signer = getattr(request.app.state, "sealer", None)
     if signer is None:
         raise SignerHTTPError(503, "signer_unavailable", "Signer unavailable.")
@@ -167,7 +173,7 @@ async def checkpoint_http(request: Request, _: None = Depends(require_bearer)) -
         raise SignerHTTPError(500, "internal_error", "Internal error.") from exc
 
 
-async def heartbeat_http(request: Request, _: None = Depends(require_bearer)) -> dict:
+async def heartbeat_http(request: Request, _: None = Depends(require_internal)) -> dict:
     signer = getattr(request.app.state, "sealer", None)
     if signer is None:
         raise SignerHTTPError(503, "signer_unavailable", "Signer unavailable.")
