@@ -1,10 +1,10 @@
-"""Agent prompt, tool and input lineage Scaffold only; no runtime behavior."""
+"""Agent prompt, tool and input lineage tracking (spec §13.4)."""
 
 from __future__ import annotations
 
 from libs.blackbox_core import schemas
-
-# TODO(spec §13.4): implement and validate before enabling this module.
+from libs.blackbox_core.crypto import sha256
+from libs.blackbox_core.encoding import encode_hash
 
 
 def build_context(
@@ -14,4 +14,13 @@ def build_context(
     model_version: str,
     inputs: list[schemas.UntrustedInput],
 ) -> schemas.Context:
-    raise NotImplementedError("not built")
+    """Build a validated Context structure binding prompt, tools, model, and inputs."""
+    sys_hash = encode_hash(sha256(system_prompt.encode("utf-8")))
+    tools_hash = encode_hash(sha256(tool_definitions))
+    return schemas.Context(
+        system_prompt_hash=sys_hash,
+        tool_definitions_hash=tools_hash,
+        model_identifier=model_identifier,
+        model_version=model_version,
+        untrusted_inputs=list(inputs),
+    )

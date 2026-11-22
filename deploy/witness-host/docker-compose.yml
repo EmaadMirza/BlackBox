@@ -1,5 +1,5 @@
 name: blackbox-witness
-# Deploy separately on each independent host. TLS provisioning remains TODO §11.2.
+# Deploy separately on each independent host with mutual TLS (§11.2, DK3).
 services:
   witness:
     build: {context: ../.., dockerfile: services/witness/Dockerfile}
@@ -10,9 +10,19 @@ services:
     security_opt: [no-new-privileges:true]
     environment:
       WITNESS_ID: ${WITNESS_ID:-witness-remote-1}
-      LEDGER_URL: ${LEDGER_PUBLIC_URL:-https://REPLACE_WITH_LEDGER_READ_API}
+      LEDGER_URL: ${LEDGER_PUBLIC_URL:-https://ledger.internal:8000}
+      TLS_ENABLED: ${TLS_ENABLED:-true}
+      TLS_CA_CERT: /run/blackbox/certs/ca.crt
+      TLS_SERVER_CERT: /run/blackbox/certs/witness.crt
+      TLS_SERVER_KEY: /run/blackbox/certs/witness.key
+      TLS_CLIENT_CERT: /run/blackbox/certs/witness-client.crt
+      TLS_CLIENT_KEY: /run/blackbox/certs/witness-client.key
+      REQUIRE_CLIENT_CERT: ${REQUIRE_CLIENT_CERT:-true}
     ports: ["127.0.0.1:8100:8000"]
-    volumes: [witness_data:/var/lib/blackbox/witness, "./keys:/run/blackbox/witness-keys:ro"]
+    volumes:
+      - witness_data:/var/lib/blackbox/witness
+      - ./keys:/run/blackbox/witness-keys:ro
+      - ./certs:/run/blackbox/certs:ro
     networks: [witness_transport]
     healthcheck:
       test: [CMD, /app/.venv/bin/python, -c, "import httpx; httpx.get('http://127.0.0.1:8000/health', timeout=2).raise_for_status()"]

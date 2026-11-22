@@ -13,6 +13,8 @@ from pydantic import BaseModel
 
 from libs.blackbox_core import schemas
 from libs.blackbox_core.canonical import canonicalize
+from services.gateway.auth_web import NonceStore, WebAuthError, authenticate
+from services.gateway.mcp_adapter import MCPAdapter
 from services.gateway.pipeline import GatewayPipeline
 from services.gateway.policy.engine import PolicyEngine, load_rules
 from services.payload_store.main import PayloadStore
@@ -106,10 +108,18 @@ def create_app(
     clock: Any = None,
     approval_verifier: Any = None,
     tooldefs_registry: Any = None,
+    mcp_adapter: MCPAdapter | None = None,
+    web_secrets: dict[str, bytes] | None = None,
+    nonce_store: NonceStore | None = None,
 ) -> FastAPI:
     """Create Gateway FastAPI application."""
     app = FastAPI(title="BlackBox Gateway")
 
+    default_tokens = {
+        "agent-default": "token-default",
+        "agent-1": "token-1",
+        "agent-mcp": "token-mcp",
+    }
     if pipeline is not None:
         app.state.pipeline = pipeline
     elif signer is not None and provider is not None:
@@ -123,7 +133,7 @@ def create_app(
             provider=provider,
             payload_store=payload_store,
             policy=policy,
-            agent_tokens=agent_tokens or {},
+            agent_tokens=agent_tokens or default_tokens,
             clock=clock or (lambda: "2026-01-01T00:00:00.000Z"),
             approval_verifier=approval_verifier,
             tooldefs_registry=tooldefs_registry,
@@ -143,13 +153,19 @@ def create_app(
             provider=provider_client,
             payload_store=payload_store,
             policy=PolicyEngine(rules),
-            agent_tokens=agent_tokens or {"agent-default": "token-default"},
+            agent_tokens=agent_tokens or default_tokens,
             clock=clock or (lambda: "2026-01-01T00:00:00.000Z"),
             approval_verifier=approval_verifier,
             tooldefs_registry=tooldefs_registry,
         )
     else:
         app.state.pipeline = None
+
+    app.state.mcp_adapter = mcp_adapter or (
+        MCPAdapter(pipeline=app.state.pipeline) if app.state.pipeline else None
+    )
+    app.state.web_secrets = web_secrets or {"web-default": b"secret-web-key"}
+    app.state.nonce_store = nonce_store
 
     @app.get("/health")
     async def _health() -> dict[str, str]:
@@ -211,7 +227,28 @@ def create_app(
     async def _web(request: Request) -> JSONResponse:
         body = await request.body()
         headers = dict(request.headers)
-        res = await web_request(body, headers)
+        secrets = getattr(app.state, "web_secrets", None)
+        n_store = getattr(app.state, "nonce_store", None)
+        try:
+            res = await web_request(
+                body,
+                headers,
+                method=request.method,
+                path=request.url.path,
+                secret_registry=secrets,
+                nonce_store=n_store,
+            )
+            return JSONResponse(content=res, status_code=200)
+        except WebAuthError as exc:
+            return JSONResponse(content={"status": "blocked", "error": str(exc)}, status_code=403)
+
+    @app.post("/v1/mcp")
+    async def _mcp(request: Request) -> JSONResponse:
+        body = await request.body()
+        adapter: MCPAdapter | None = getattr(app.state, "mcp_adapter", None)
+        if adapter is None:
+            adapter = MCPAdapter(pipeline=getattr(app.state, "pipeline", None))
+        res = await adapter.handle_jsonrpc(body.decode("utf-8"))
         return JSONResponse(content=res, status_code=200)
 
     return app
@@ -226,6 +263,33 @@ async def agent_request(request: schemas.RequestAction, authorization: str) -> b
     return json.dumps(request.model_dump()).encode("utf-8")
 
 
-async def web_request(body: bytes, headers: dict[str, str]) -> dict[str, Any]:
+async def web_request(
+    body: bytes,
+    headers: dict[str, str],
+    *,
+    method: str = "POST",
+    path: str = "/v1/web",
+    secret_registry: dict[str, bytes] | None = None,
+    nonce_store: Any = None,
+    require_auth: bool = False,
+) -> dict[str, Any]:
     """Process a web lane request with HMAC / nonce validation."""
-    return {"status": "ok", "body_size": len(body), "lane": "web"}
+    has_hmac = any(k.lower() in ("x-blackbox-keyid", "x-key-id") for k in headers)
+    principal_dict = None
+    if has_hmac or require_auth:
+        principal = await authenticate(
+            method=method,
+            path=path,
+            body=body,
+            headers=headers,
+            secret_registry=secret_registry,
+            nonce_store=nonce_store,
+        )
+        principal_dict = principal.model_dump()
+
+    return {
+        "status": "ok",
+        "body_size": len(body),
+        "lane": "web",
+        "principal": principal_dict,
+    }

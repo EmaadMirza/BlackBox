@@ -70,6 +70,22 @@ def create_app(*, collector: AlarmCollector | None = None, bearer_token: str = "
             )
         return active_collector.records()
 
+    @app.post("/alarms")
+    async def record_alarm(request: Request) -> dict[str, str]:
+        if bearer_token and request.headers.get("authorization") != f"Bearer {bearer_token}":
+            return JSONResponse(
+                {"error": {"code": "unauthorized", "message": "Authentication required."}}, 401
+            )
+        data = await request.json()
+        active_collector.collect(
+            alarm_type=data.get("type", "UNKNOWN"),
+            source=data.get("source", "unknown"),
+            evidence_reference=data.get("evidence_reference", ""),
+            severity=data.get("severity", "low"),
+            timestamp=data.get("time", ""),
+        )
+        return {"status": "recorded"}
+
     return app
 
 

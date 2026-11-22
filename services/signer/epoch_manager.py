@@ -26,6 +26,7 @@ from libs.blackbox_core.schemas import (
     SealedEntry,
 )
 from libs.blackbox_core.sealing import seal
+from services.signer.custody import KeyCustodyProvider, ZeroizableEpochKey, create_custody_provider
 
 
 class IntermediateSigner(Protocol):
@@ -99,6 +100,68 @@ class InMemoryIntermediateSigner:
         )
 
 
+class HSMIntermediateSigner:
+    """Hardware custody adapter signing epoch certificates without exposing key material."""
+
+    def __init__(
+        self,
+        certificate: IntermediateCertificate,
+        custody_provider: KeyCustodyProvider | SigningOperation,
+        root_public_key: bytes,
+    ) -> None:
+        self.certificate = certificate
+        self.custody_provider = custody_provider
+        self._root_public_key = root_public_key
+
+    @classmethod
+    def from_provider(
+        cls,
+        certificate: IntermediateCertificate,
+        provider_type: str,
+        root_public_key: bytes,
+        **provider_kwargs: object,
+    ) -> HSMIntermediateSigner:
+        provider = create_custody_provider(provider_type, **provider_kwargs)
+        return cls(certificate, provider, root_public_key)
+
+    def sign_epoch_certificate(self, certificate: EpochCertificate) -> EpochCertificate:
+        if certificate.log_id != self.certificate.log_id:
+            raise ValueError("intermediate log identity mismatch")
+        if (
+            certificate.valid_from < self.certificate.valid_from
+            or certificate.valid_until > self.certificate.valid_until
+        ):
+            raise ValueError("intermediate certificate is expired or unavailable")
+        signed = build_epoch_certificate(
+            certificate.epoch_id,
+            certificate.epoch_public_key,
+            certificate.valid_from,
+            certificate.valid_until,
+            certificate.intermediate_id,
+            log_id=certificate.log_id,
+            signing_operation=self.custody_provider,
+        )
+        if not self.verify_epoch_certificate(signed):
+            raise ValueError("new epoch certificate failed verification")
+        return signed
+
+    def verify_epoch_certificate(self, certificate: EpochCertificate) -> bool:
+        return verify_epoch_certificate(
+            certificate,
+            self.certificate,
+            self._root_public_key,
+            certificate.valid_from,
+        )
+
+    def zeroize(self) -> None:
+        if hasattr(self.custody_provider, "zeroize"):
+            self.custody_provider.zeroize()
+
+    def destroy_key(self) -> None:
+        if hasattr(self.custody_provider, "destroy_key"):
+            self.custody_provider.destroy_key()
+
+
 class DirectoryIntermediateSigner(InMemoryIntermediateSigner):
     """Development-only loader for the output of ``tools/ceremony.py``."""
 
@@ -115,6 +178,40 @@ class DirectoryIntermediateSigner(InMemoryIntermediateSigner):
         if not isinstance(operation, Ed25519PrivateKey):
             raise ValueError("development intermediate key is not Ed25519")
         super().__init__(certificate, operation, root_public_key)
+
+
+def load_intermediate_signer(
+    directory: Path,
+    root_public_key: bytes,
+    expected_log_id: str | None = None,
+) -> IntermediateSigner:
+    """Load intermediate signer from ceremony directory (supporting both PEM and HSM custody §7.1)."""
+    certificate = IntermediateCertificate.model_validate(
+        json.loads((directory / "intermediate.json").read_text(encoding="utf-8"))
+    )
+    if expected_log_id is not None and certificate.log_id != expected_log_id:
+        raise ValueError("intermediate certificate log identity mismatch")
+
+    custody_path = directory / "intermediate-custody.json"
+    if custody_path.exists():
+        custody_info = json.loads(custody_path.read_text(encoding="utf-8"))
+        prov_type = custody_info.get("provider_type", "mock")
+        prov_kwargs = custody_info.get("provider_kwargs", {})
+        return HSMIntermediateSigner.from_provider(
+            certificate, prov_type, root_public_key, **prov_kwargs
+        )
+
+    pem_path = directory / "intermediate.dev-private.pem"
+    if pem_path.exists():
+        key_bytes = pem_path.read_bytes()
+        operation = serialization.load_pem_private_key(key_bytes, password=None)
+        if not isinstance(operation, Ed25519PrivateKey):
+            raise ValueError("development intermediate key is not Ed25519")
+        return InMemoryIntermediateSigner(certificate, operation, root_public_key)
+
+    raise FileNotFoundError(
+        f"Neither intermediate-custody.json nor intermediate.dev-private.pem found in {directory}"
+    )
 
 
 class EpochManager:
@@ -178,7 +275,7 @@ class EpochManager:
         old = self.certificate
         valid_from = parse_timestamp(old.valid_until)
         valid_until = max(valid_from, now) + timedelta(seconds=self.epoch_duration)
-        key = Ed25519PrivateKey.generate()
+        key = ZeroizableEpochKey.generate()
         candidate = EpochCertificate(
             epoch_id=old.epoch_id + 1,
             log_id=self.log_id,
@@ -190,6 +287,20 @@ class EpochManager:
         signed = self.intermediate_signer.sign_epoch_certificate(candidate)
         if not self.intermediate_signer.verify_epoch_certificate(signed):
             raise ValueError("new epoch certificate failed verification")
+
+        # Zeroize and destroy predecessor epoch key (§7.2)
+        old_op = self.runtime.signing_operation
+        if hasattr(old_op, "zeroize"):
+            try:
+                old_op.zeroize()
+            except Exception:
+                pass
+        elif hasattr(old_op, "destroy_key"):
+            try:
+                old_op.destroy_key()
+            except Exception:
+                pass
+
         new_runtime = EpochRuntime(signed, key)
         self.runtime = new_runtime
         self.degraded = False
@@ -244,17 +355,29 @@ class EpochManager:
         self.runtime = plan.new_runtime
         self.last_timestamp = plan.start.body.signer_timestamp
 
+        # §7.2 Ephemeral Epoch Key Memory Protection:
+        # Zeroize and destroy the expired epoch private key immediately upon commit
+        old_op = plan.old_runtime.signing_operation
+        if hasattr(old_op, "zeroize"):
+            try:
+                old_op.zeroize()
+            except Exception:
+                pass
+        elif hasattr(old_op, "destroy_key"):
+            try:
+                old_op.destroy_key()
+            except Exception:
+                pass
+
     def fail_closed(self) -> None:
         self.degraded = True
-        self.runtime = EpochRuntime(
-            self.certificate, _DestroyedSigner(self.runtime.signing_operation)
-        )
+        self.destroy_current_key()
 
     def _new_runtime(self, now) -> EpochRuntime:
         old = self.certificate
         valid_from = parse_timestamp(old.valid_until)
         valid_until = max(valid_from, now) + timedelta(seconds=self.epoch_duration)
-        key = Ed25519PrivateKey.generate()
+        key = ZeroizableEpochKey.generate()
         candidate = EpochCertificate(
             epoch_id=old.epoch_id + 1,
             log_id=self.log_id,
@@ -282,12 +405,32 @@ class EpochManager:
 
     def destroy_current_key(self) -> None:
         operation = self.runtime.signing_operation
+        if hasattr(operation, "zeroize"):
+            try:
+                operation.zeroize()
+            except Exception:
+                pass
+        elif hasattr(operation, "destroy_key"):
+            try:
+                operation.destroy_key()
+            except Exception:
+                pass
         self.runtime = EpochRuntime(self.certificate, _DestroyedSigner(operation))
 
 
 class _DestroyedSigner:
     def __init__(self, old: SigningOperation) -> None:
         self._old = old
+        if hasattr(old, "zeroize"):
+            try:
+                old.zeroize()
+            except Exception:
+                pass
+        elif hasattr(old, "destroy_key"):
+            try:
+                old.destroy_key()
+            except Exception:
+                pass
 
     def sign(self, _data: bytes) -> bytes:
         del self._old

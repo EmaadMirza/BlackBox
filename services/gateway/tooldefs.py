@@ -29,6 +29,14 @@ class ToolDefsRegistry:
     def is_changed(self, session_id: str, current_hash: str) -> bool:
         prev = self._sessions.get(session_id)
         if prev is not None and prev != current_hash:
+            alarm = {
+                "alarm_type": "TOOL_DEF_CHANGE",
+                "session_id": session_id,
+                "previous_hash": prev,
+                "new_hash": current_hash,
+            }
+            if alarm not in self._alarms:
+                self._alarms.append(alarm)
             return True
         return False
 
