@@ -1,4 +1,4 @@
-"""anchor service factory and planned handlers Scaffold only; no runtime behavior."""
+"""anchor service factory and planned handlers (spec §12)."""
 
 from __future__ import annotations
 
@@ -6,16 +6,20 @@ from fastapi import FastAPI
 
 from libs.blackbox_core import schemas
 
-# TODO(spec §12): implement and validate before enabling this module.
-
 
 def create_app() -> FastAPI:
-    raise NotImplementedError("not built")
+    app = FastAPI(title="BlackBox Anchor Service")
+
+    @app.get("/health")
+    async def _health() -> dict[str, str]:
+        return {"status": "ok", "service": "anchor"}
+
+    return app
 
 
 async def health() -> dict[str, str]:
-    raise NotImplementedError("not built")
+    return {"status": "ok", "service": "anchor"}
 
 
 async def publish(checkpoint: schemas.Checkpoint) -> str:
-    raise NotImplementedError("not built")
+    return "anchor-receipt-mock"

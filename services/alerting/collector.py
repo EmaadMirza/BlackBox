@@ -48,8 +48,10 @@ class AlarmCollector:
         return [json.loads(line) for line in self.path.read_text().splitlines() if line]
 
 
-def create_app(*, collector: AlarmCollector, bearer_token: str = "") -> FastAPI:
-    app = FastAPI()
+def create_app(*, collector: AlarmCollector | None = None, bearer_token: str = "") -> FastAPI:
+    app = FastAPI(title="BlackBox Alerting Service")
+    active_collector = collector if collector is not None else AlarmCollector()
+    app.state.collector = active_collector
 
     @app.get("/health")
     async def health() -> dict[str, str]:
@@ -61,7 +63,7 @@ def create_app(*, collector: AlarmCollector, bearer_token: str = "") -> FastAPI:
             return JSONResponse(
                 {"error": {"code": "unauthorized", "message": "Authentication required."}}, 401
             )
-        return collector.records()
+        return active_collector.records()
 
     return app
 

@@ -80,6 +80,15 @@ class WitnessRefusal(Exception):
 
 
 def create_app(config: WitnessConfig | None = None, **legacy: Any) -> FastAPI:
+    if config is None and not legacy:
+        app = FastAPI(title="BlackBox Witness (Unconfigured)")
+
+        @app.get("/health")
+        async def _health() -> dict[str, str]:
+            return {"status": "ok", "witness": "unconfigured"}
+
+        return app
+
     if config is None:
         key = legacy.pop("witness_key", None)
         if key is None:

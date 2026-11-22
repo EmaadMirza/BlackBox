@@ -109,6 +109,12 @@ def load_outbox(expected_log_id: str) -> outbox.OutboxSnapshot:
         raise outbox.OutboxError(
             "outbox_uncertain", "uncertain signer state commit; recovery is required"
         )
+    from services.signer import quarantine
+
+    if quarantine.is_quarantined(path):
+        raise outbox.OutboxError(
+            "outbox_uncertain", "uncertain signer state commit; recovery is required"
+        )
     outbox_path = _outbox_path(path)
     initialized = _initialized_path(path)
     if not outbox_path.exists():
@@ -133,6 +139,10 @@ def load_state(expected_log_id: str | None = None) -> tuple[int, str, int]:
     path = _state_path()
     marker = _marker_path(path)
     if marker.exists():
+        raise ValueError("uncertain signer state commit; recovery is required")
+    from services.signer import quarantine
+
+    if quarantine.is_quarantined(path):
         raise ValueError("uncertain signer state commit; recovery is required")
     initialized = _initialized_path(path)
     try:
@@ -160,6 +170,9 @@ def load_state(expected_log_id: str | None = None) -> tuple[int, str, int]:
     load_outcome_index(log_id)
     signer_outbox = load_outbox(log_id)
     outbox.validate_snapshot(signer_outbox, log_id, expected_head=(last_seq, last_hash))
+    from services.signer import recovery
+
+    recovery.validate_startup_recovery(last_seq, last_hash, log_id, path)
     return last_seq, last_hash, epoch_id
 
 

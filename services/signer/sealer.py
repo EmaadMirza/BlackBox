@@ -202,6 +202,12 @@ class SignerSealer:
         atomic chain state API retains its existing persistence semantics.
         """
 
+        from services.signer import quarantine
+
+        if quarantine.is_quarantined():
+            reason = quarantine.get_quarantine_reason() or "quarantined"
+            raise quarantine.QuarantineActiveError(reason)
+
         now = self._clock()
         parse_timestamp(now)
         if self._epoch_manager is None and state.epoch_metadata_exists():
@@ -216,6 +222,13 @@ class SignerSealer:
                 plan = self._prepare_rollover(now, last_seq, last_hash, outcome_index)
                 self._epoch_manager.commit_rollover(plan)
                 self._last_rollover_entries = (plan.end, plan.start)
+                try:
+                    from services.signer import journal
+
+                    journal.append_issuance(journal.record_from_sealed(plan.end, now))
+                    journal.append_issuance(journal.record_from_sealed(plan.start, now))
+                except Exception:
+                    pass
                 last_seq = plan.start.body.seq
                 last_hash = entry_hash(plan.start.body)
                 durable_epoch_id = plan.start.body.epoch_id
@@ -343,6 +356,12 @@ class SignerSealer:
             )
         if isinstance(sealed.body, Intent):
             self._sealed_intents[sealed.body.seq] = sealed_body_hash
+        try:
+            from services.signer import journal
+
+            journal.append_issuance(journal.record_from_sealed(sealed, now))
+        except Exception:
+            pass
         return sealed
 
     def attest(
@@ -351,6 +370,11 @@ class SignerSealer:
         requested_body_digest: str | None = None,
         checkpoint_evidence: CheckpointEvidence | None = None,
     ):
+        from services.signer import quarantine
+
+        if quarantine.is_quarantined():
+            reason = quarantine.get_quarantine_reason() or "quarantined"
+            raise quarantine.QuarantineActiveError(reason)
         if type(intent_seq) is not int or intent_seq < 0 or self._history_source is None:
             raise SignerRuleError("intent unavailable")
         try:

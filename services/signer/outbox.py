@@ -109,6 +109,8 @@ def validate_snapshot(
             raise OutboxError("outbox_empty_signature", "outbox entries must be signed")
         if parsed.body.log_id != expected_log_id:
             raise OutboxError("outbox_log_mismatch", "entry log identity does not match")
+        if parsed.body.type == "recovery":
+            expected_seq = parsed.body.seq
         if parsed.body.seq != expected_seq:
             raise OutboxError("outbox_inconsistent", "pending sequences are not contiguous")
         if parsed.body.prev_hash != previous_hash:
@@ -237,6 +239,8 @@ def append(
     for entry in parsed_additions:
         if entry.body.log_id != snapshot.log_id:
             raise OutboxError("outbox_log_mismatch", "entry log identity does not match")
+        if entry.body.type == "recovery":
+            expected_seq = entry.body.seq
         if entry.body.seq != expected_seq or entry.body.prev_hash != previous_hash:
             raise OutboxError("outbox_inconsistent", "appended entries do not continue the chain")
         previous_hash = _entry_hash(entry.body)

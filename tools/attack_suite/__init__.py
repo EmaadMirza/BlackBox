@@ -1,2 +1,7 @@
-"""BlackBox attack_suite package; scaffold only."""
-# TODO(spec §22): implement only after the applicable preceding gates pass.
+"""BlackBox Forensic Audit & Attack Suite (spec §22, §29.4)."""
+
+from __future__ import annotations
+
+from tools.attack_suite.runner import run_all
+
+__all__ = ["run_all"]

@@ -16,14 +16,12 @@ class FindingsStore:
         self._in_memory: list[schemas.Finding] = []
 
     def append(self, finding: schemas.Finding) -> None:
+        existing = self.list_findings()
         self._in_memory.append(finding)
         if self.path is not None:
-            existing = self.list_findings()
-            existing.append(finding)
+            updated = existing + [finding]
             self.path.write_text(
-                json.dumps(
-                    [f.model_dump() for f in existing], sort_keys=True, separators=(",", ":")
-                )
+                json.dumps([f.model_dump() for f in updated], sort_keys=True, separators=(",", ":"))
             )
             self.path.chmod(0o600)
 

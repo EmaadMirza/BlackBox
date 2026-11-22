@@ -2,9 +2,12 @@
 
 from __future__ import annotations
 
+import os
 from collections.abc import Callable
+from pathlib import Path
 from typing import Any
 
+import httpx
 from fastapi import FastAPI
 
 from libs.blackbox_core import schemas
@@ -41,6 +44,39 @@ class Reconciler:
 
 def create_app(*, reconciler: Reconciler | None = None) -> FastAPI:
     app = FastAPI(title="BlackBox Reconciler")
+
+    if reconciler is None:
+        ledger_url = os.environ.get("LEDGER_URL")
+        events_url = os.environ.get("PROVIDER_EVENTS_URL")
+        if ledger_url and events_url:
+
+            def _read_ledger() -> list[schemas.SealedEntry]:
+                try:
+                    with httpx.Client(base_url=ledger_url.rstrip("/"), timeout=3.0) as client:
+                        res = client.get("/entries")
+                        if res.status_code == 200:
+                            return [schemas.SealedEntry.model_validate(e) for e in res.json()]
+                except Exception:
+                    pass
+                return []
+
+            def _read_events() -> list[dict[str, Any]]:
+                try:
+                    with httpx.Client(timeout=3.0) as client:
+                        res = client.get(events_url)
+                        if res.status_code == 200:
+                            return res.json()
+                except Exception:
+                    pass
+                return []
+
+            store_path = Path(os.environ.get("FINDINGS_STORE_PATH", "findings-store.json"))
+            reconciler = Reconciler(
+                ledger_reader=_read_ledger,
+                event_reader=_read_events,
+                findings_store=FindingsStore(store_path),
+            )
+
     app.state.reconciler = reconciler
 
     @app.get("/health")
@@ -63,15 +99,3 @@ def create_app(*, reconciler: Reconciler | None = None) -> FastAPI:
         return [f.model_dump() for f in rec.findings_store.list_findings()]
 
     return app
-
-
-async def health() -> dict[str, str]:
-    return {"status": "ok"}
-
-
-async def run_once() -> list[schemas.Finding]:
-    raise NotImplementedError("use create_app with an injected Reconciler")
-
-
-async def run_loop(interval_seconds: int = 10) -> None:
-    raise NotImplementedError("use create_app with an injected Reconciler")

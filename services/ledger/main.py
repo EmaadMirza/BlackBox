@@ -80,7 +80,14 @@ def create_app(
     app.state.bundle_log_name = bundle_log_name
     app.state.bundle_witness_set = bundle_witness_set
     if store is None:
-        app.state.pool = db.connect(os.environ.get("LEDGER_DATABASE_URL", "dbname=blackbox_ledger"))
+        db_url = (
+            os.environ.get("LEDGER_DATABASE_URL")
+            or os.environ.get("DATABASE_URL")
+            or "dbname=blackbox_ledger"
+        )
+        if db_url.startswith("postgresql+asyncpg://"):
+            db_url = "postgresql://" + db_url[len("postgresql+asyncpg://") :]
+        app.state.pool = db.connect(db_url)
         app.state.merkle_ready = True
         app.state.merkle_error = None
         try:

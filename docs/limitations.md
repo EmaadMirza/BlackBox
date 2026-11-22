@@ -180,17 +180,19 @@ documented limitation until a future stage authorizes it.
 6. **Anchor service (`services/anchor`).** OpenTimestamps and public Git
    anchoring are optional and not on the critical path; all three endpoint stubs
    remain `NotImplementedError`.
-7. **Task E full recovery.** Durable recovery quarantine, startup-enforced
-   recovery anchor, and the two recovery outcomes (same-log continuation,
-   new-log restart) described in `docs/task-e-addendum.md` are not implemented.
-   Recovery remains fail-closed with manual operator intervention.
+7. **Task E full recovery.** Durable recovery quarantine (`services/signer/quarantine.py`),
+   startup-enforced recovery anchor (`services/signer/recovery.py`), and the two
+   recovery outcomes (same-log continuation, new-log restart / burned sequence
+   range via `Recovery` entries) described in `docs/task-e-addendum.md` and Spec
+   Amendment 001 are implemented and verified.
 8. **Task E2b (issuance journal).** The crash/lost-response journal for
-   signer-to-ledger reconciliation is not implemented. Lost rollover responses
-   and durable reconciliation remain pending.
-9. **Task R (automated operator rebuild tool).** No rebuild command exists.
-   Recovery from a pre-commit marker requires the deployment's approved recovery
-   tooling or a controlled maintenance script, as documented in
-   `docs/task-c-recovery.md`.
+   signer-to-ledger reconciliation (`services/signer/journal.py`) is implemented.
+   Every entry is durably recorded and `fsync`ed before returning to callers,
+   preventing sequence equivocation after crashes.
+9. **Task R (automated operator rebuild tool).** The automated operator rebuild CLI
+   (`tools/rebuild.py` and `services/signer/rebuild.py`) is implemented, supporting
+   `status`, `quarantine`, `rebuild` from complete prefix history, and `burn` for
+   authorized sequence discontinuities.
 10. **mTLS and directional caller-/operation-specific authorization.** The shared
     bearer token is an interim transport credential. Network membership is not
     authentication. The gateway/ledger ingress conflict (§6.2 vs §10.3) is not
@@ -213,15 +215,18 @@ documented limitation until a future stage authorizes it.
 | **Tool Definition Integrity** | Unauthorized modification of session tool definitions triggers `TOOL_DEF_CHANGE` and fails closed without provider effect. | `tests/acceptance/test_e12.py` |
 | **Independent Offline Verification** | Pinned public keys verify Merkle inclusion, hash chain continuity, and certificate chains without connecting to the deployment. | `tests/acceptance/test_e01.py`<br>`tests/unit/test_verifier.py`<br>`tools/verifier/` |
 | **Reconciler Verification** | Read-only join between ledger and provider event logs flags `UNRECORDED_ACTION`, `UNATTESTED_ACTION`, `PHANTOM_OUTCOME`, `ORPHAN_INTENT`, `ARGS_MISMATCH`. | `tests/acceptance/test_e01.py`<br>`tests/acceptance/test_e03.py`<br>`tests/acceptance/test_e04.py` |
+| **Epoch Key Containment & Rogue Epoch Defense** | A stolen epoch signing key cannot produce entries accepted outside that epoch's half-open validity window `[from, until)`, produce entries under a revoked/never-issued epoch cert, or rewrite witnessed history. | `tests/acceptance/test_e11.py`<br>`tests/property/test_epoch_rollover.py`<br>`tests/unit/test_epochs_rules.py` |
+| **Performance Under Load (Locust Benchmarking)** | Harness drives Gateway -> Signer -> Ledger -> ProviderMock under concurrent load with zero errors, continuous ledger sequences, and verified offline bundles. | `tests/acceptance/test_e09.py`<br>`bench/locustfile.py`<br>`bench/results.json` |
+| **Crash Recovery & Fault Tolerance (Tasks C, E, E2b, R)** | Signer issuance journal prevents lost-response equivocation; durable quarantine and startup-enforced recovery anchor fail closed; operator rebuild CLI reconstructs state/index and authorizes sequence burns. | `tests/unit/test_signer_issuance_journal.py`<br>`tests/unit/test_signer_quarantine.py`<br>`tests/unit/test_signer_recovery_anchor.py`<br>`tests/unit/test_signer_rebuild_tool.py`<br>`tools/rebuild.py` |
+| **Network Egress Control & Bypass Reconciliation** | Egress policy blocks direct agent network access to downstream providers (Layer 1); bypassed or loosened rules trigger provider UNATTESTED event logging and reconciler UNATTESTED_ACTION detection (Layer 2). | `tests/acceptance/test_e05.py`<br>`services/gateway/egress.py` |
 
 ### Not Claimed (Out of Prototype Scope)
 
 The following claims are **not proven** and are **not claimed** by this prototype:
 
+- **Key extraction from process memory is out of scope:** Python process memory cannot guarantee key zeroization; hardware isolation requires HSM/KMS/TPM custody.
+
 | Unproven Claim | Reason / Missing Infrastructure | Tracked Acceptance Scenario (XFAIL) |
 | --- | --- | --- |
-| **Network Egress Isolation** | Requires Docker/Compose container egress control and firewall enforcement. | `tests/acceptance/test_e05.py` |
-| **Performance Under Load** | Throughput, latency percentiles (p50/p95/p99), and integrity under stress require full load-test infrastructure. | `tests/acceptance/test_e09.py` |
-| **Hardware Key Custody & Zeroization** | Bounded forward forgery under key theft requires HSM/KMS/TPM hardware custody; Python memory cannot guarantee key zeroization. | `tests/acceptance/test_e11.py` |
+| **Hardware Key Custody & Zeroization** | Key extraction from process memory is out of scope. Hardware isolation and true key zeroization require HSM/KMS/TPM hardware custody. | Out of scope |
 | **Public Anchor Durability** | OpenTimestamps and public Git anchoring (`services/anchor`) are not implemented. | Deferred to Stage 5 |
-| **Crash / Lost-Response Reconciliation** | Signer-to-ledger issuance journal (Task E2b) and automated operator rebuild tool (Task R) are not implemented. | Recovery remains fail-closed |

@@ -1,0 +1,109 @@
+{
+  "timestamp": "2026-11-16T02:06:35.366724+00:00",
+  "system_specs": {
+    "os": "macOS-27.2.1-arm64-arm-64bit-Mach-O",
+    "machine": "arm64",
+    "processor": "arm",
+    "cpu_count": 10,
+    "python_version": "3.14.4",
+    "benchmark_environment": "single laptop, local in-process / PostgreSQL interface, not a production benchmark"
+  },
+  "latency_percentiles": {
+    "direct_provider": {
+      "p50_ms": 0.007,
+      "p95_ms": 0.011,
+      "p99_ms": 0.109,
+      "mean_ms": 0.008
+    },
+    "through_blackbox": {
+      "p50_ms": 1.2,
+      "p95_ms": 1.383,
+      "p99_ms": 1.839,
+      "mean_ms": 1.221
+    },
+    "added_overhead": {
+      "p50_ms": 1.193,
+      "p95_ms": 1.372,
+      "p99_ms": 1.73,
+      "mean_ms": 1.213
+    }
+  },
+  "locust_load_levels": {
+    "low_load": {
+      "concurrency_users": 2,
+      "spawn_rate": 2,
+      "duration_seconds": 5,
+      "total_actions": 1685,
+      "sealed_entries": 3370,
+      "failures": 0,
+      "actions_per_sec": 337.0,
+      "sealed_entries_per_sec": 674.0,
+      "latency_p50_ms": 2,
+      "latency_p95_ms": 2,
+      "latency_p99_ms": 2
+    },
+    "medium_load": {
+      "concurrency_users": 10,
+      "spawn_rate": 5,
+      "duration_seconds": 5,
+      "total_actions": 3901,
+      "sealed_entries": 7802,
+      "failures": 0,
+      "actions_per_sec": 780.2,
+      "sealed_entries_per_sec": 1560.4,
+      "latency_p50_ms": 1,
+      "latency_p95_ms": 1,
+      "latency_p99_ms": 2
+    },
+    "high_load": {
+      "concurrency_users": 25,
+      "spawn_rate": 10,
+      "duration_seconds": 5,
+      "total_actions": 3811,
+      "sealed_entries": 7622,
+      "failures": 0,
+      "actions_per_sec": 762.2,
+      "sealed_entries_per_sec": 1524.4,
+      "latency_p50_ms": 1,
+      "latency_p95_ms": 1,
+      "latency_p99_ms": 2
+    }
+  },
+  "merkle_proof_generation": {
+    "1000_entries": {
+      "tree_size": 1000,
+      "tree_build_ms": 0.015,
+      "inclusion_proof_ms": 0.844,
+      "inclusion_proof_length": 10,
+      "consistency_proof_ms": 0.007,
+      "consistency_proof_length": 9
+    },
+    "10000_entries": {
+      "tree_size": 10000,
+      "tree_build_ms": 0.034,
+      "inclusion_proof_ms": 7.888,
+      "inclusion_proof_length": 14,
+      "consistency_proof_ms": 0.007,
+      "consistency_proof_length": 12
+    }
+  },
+  "offline_bundle_verification": {
+    "1000_entries": {
+      "entries_count": 1000,
+      "verification_time_ms": 719.826,
+      "verdict": "VERIFIED",
+      "rate_entries_per_sec": 1389.2
+    },
+    "10000_entries": {
+      "entries_count": 10000,
+      "verification_time_ms": 7281.835,
+      "verdict": "VERIFIED",
+      "rate_entries_per_sec": 1373.3
+    }
+  },
+  "unverified_window": {
+    "action_execution_ms": 1.983,
+    "checkpoint_cosigning_ms": 1863.11,
+    "unverified_window_ms": 1865.093
+  }
+}

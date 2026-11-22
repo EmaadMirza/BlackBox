@@ -40,6 +40,11 @@ def create_app(*, sealer: SignerSealer | None = None) -> FastAPI:
 def signer_health(signer: object | None) -> dict[str, str]:
     if signer is None:
         return {"status": "ok"}
+    from services.signer import quarantine
+
+    if quarantine.is_quarantined():
+        reason = quarantine.get_quarantine_reason() or "quarantined"
+        return {"status": "degraded", "reason": reason}
     reason = getattr(signer, "health_reason", None)
     if reason == "outbox_high":
         return {"status": "ok", "reason": reason}
@@ -64,6 +69,11 @@ async def seal_http(request: Request, _: None = Depends(require_bearer)) -> Seal
     if signer is None:
         raise SignerHTTPError(503, "signer_unavailable", "Signer unavailable.")
 
+    from services.signer.quarantine import QuarantineActiveError, is_quarantined
+
+    if is_quarantined():
+        raise SignerHTTPError(503, "quarantined", "Signer is quarantined; recovery is required.")
+
     try:
         candidate = parse_entry(loads(await request.body()))
     except (RecursionError, TypeError, ValueError, UnicodeDecodeError, ValidationError) as exc:
@@ -77,6 +87,10 @@ async def seal_http(request: Request, _: None = Depends(require_bearer)) -> Seal
                 response["rollover_entries"] = [entry.model_dump() for entry in rollover_entries]
             return response
         return signer.seal(candidate).model_dump()
+    except QuarantineActiveError as exc:
+        raise SignerHTTPError(
+            503, "quarantined", "Signer is quarantined; recovery is required."
+        ) from exc
     except HistorySourceError as exc:
         raise SignerHTTPError(503, "signer_unavailable", "Signer unavailable.") from exc
     except HistoryIntegrityError as exc:
@@ -109,12 +123,20 @@ async def attest_http(request: Request, _: None = Depends(require_bearer)) -> di
     signer = getattr(request.app.state, "sealer", None)
     if signer is None:
         raise SignerHTTPError(503, "signer_unavailable", "Signer unavailable.")
+    from services.signer.quarantine import QuarantineActiveError, is_quarantined
+
+    if is_quarantined():
+        raise SignerHTTPError(503, "quarantined", "Signer is quarantined; recovery is required.")
     try:
         payload = AttestRequest.model_validate(loads(await request.body()))
     except (RecursionError, TypeError, ValueError, UnicodeDecodeError, ValidationError) as exc:
         raise SignerHTTPError(422, "invalid_request", "Invalid request.") from exc
     try:
         return signer.attest(payload.intent_seq).model_dump()
+    except QuarantineActiveError as exc:
+        raise SignerHTTPError(
+            503, "quarantined", "Signer is quarantined; recovery is required."
+        ) from exc
     except (SignerRuleError, HistoryIntegrityError) as exc:
         raise SignerHTTPError(409, "rule_conflict", "Request conflicts with signer rules.") from exc
     except (EpochUnavailableError, HistorySourceError, OSError, ValueError) as exc:
@@ -157,15 +179,3 @@ async def heartbeat_http(request: Request, _: None = Depends(require_bearer)) ->
         raise SignerHTTPError(503, "signer_unavailable", "Signer unavailable.") from exc
     except Exception as exc:
         raise SignerHTTPError(500, "internal_error", "Internal error.") from exc
-
-
-async def seal(candidate: schemas.Entry) -> schemas.SealedEntry:
-    raise NotImplementedError("not built")
-
-
-async def attest(intent_seq: int) -> schemas.Attestation:
-    raise NotImplementedError("not built")
-
-
-async def checkpoint(request: schemas.Checkpoint) -> schemas.Checkpoint:
-    raise NotImplementedError("not built")

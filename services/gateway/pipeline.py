@@ -297,9 +297,3 @@ class GatewayPipeline:
         }
         self._retries[idempotency_key] = result
         return result
-
-
-async def execute(
-    action: schemas.RequestAction, principal: schemas.Principal, context: schemas.Context | None
-) -> bytes:
-    raise NotImplementedError("use GatewayPipeline with injected in-process components")
