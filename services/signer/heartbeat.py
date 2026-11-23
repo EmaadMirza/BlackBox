@@ -1,15 +1,25 @@
-"""Signer heartbeat scheduler Scaffold only; no runtime behavior."""
+"""Thin cooperative heartbeat tick runner."""
 
-from __future__ import annotations
-
-from libs.blackbox_core import schemas
-
-# TODO(spec §9.2): implement and validate before enabling this module.
+import asyncio
 
 
-async def emit_heartbeat() -> schemas.Heartbeat:
-    raise NotImplementedError("not built")
+class TickRunner:
+    def __init__(self, signer) -> None:
+        self.signer = signer
+        self.stopped = False
+
+    def tick_once(self):
+        if self.stopped:
+            return (), None
+        return self.signer.tick()
+
+    def stop(self) -> None:
+        self.stopped = True
 
 
-async def run(interval_seconds: int = 5) -> None:
-    raise NotImplementedError("not built")
+async def run(signer, interval_seconds: int = 5) -> None:
+    """Run cooperative ticks without owning signer concurrency."""
+    runner = TickRunner(signer)
+    while not runner.stopped:
+        runner.tick_once()
+        await asyncio.sleep(interval_seconds)

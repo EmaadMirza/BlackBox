@@ -17,6 +17,7 @@ dependencies = [
 services = [
   "fastapi>=0.115,<1", "uvicorn>=0.34,<1", "httpx>=0.28,<1",
   "sqlalchemy>=2.0,<3", "asyncpg>=0.30,<1", "redis>=5,<8", "pyyaml>=6,<7",
+  "psycopg[pool,binary]>=3.2,<4",
 ]
 dev = ["pytest>=8,<10", "hypothesis>=6,<7", "ruff>=0.11,<1", "locust>=2,<3"]
 
@@ -30,7 +31,8 @@ include = ["libs*", "services*", "tools*", "agent*", "baseline*", "bench*"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
-addopts = "-ra"
+addopts = "-ra --ignore=tests/integration"
+markers = ["integration: tests requiring a live PostgreSQL instance"]
 xfail_strict = true
 
 [tool.ruff]

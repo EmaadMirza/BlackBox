@@ -16,3 +16,4 @@ sqlalchemy<3,>=2.0
 asyncpg<1,>=0.30
 redis<8,>=5
 pyyaml<7,>=6
+psycopg[binary,pool]<4,>=3.2

@@ -1,25 +1,97 @@
-"""Alarm collector service Scaffold only; no runtime behavior."""
+"""Local alarm collector with durable deduplication and no external notifications."""
 
 from __future__ import annotations
 
-from fastapi import FastAPI
+import hashlib
+import json
+import os
+from pathlib import Path
 
-from libs.blackbox_core import schemas
+from fastapi import FastAPI, Request
+from fastapi.responses import JSONResponse
 
-# TODO(spec §17.1): implement and validate before enabling this module.
+from libs.blackbox_core.canonical import canonicalize
 
 
-def create_app() -> FastAPI:
-    raise NotImplementedError("not built")
+class AlarmCollector:
+    def __init__(self, path: Path) -> None:
+        self.path = path
+        self.path.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
+
+    def collect(
+        self, alarm_type: str, source: str, evidence_reference: str, severity: str, timestamp: str
+    ) -> None:
+        records = self.records()
+        identity = hashlib.sha256(
+            canonicalize({"type": alarm_type, "source": source, "evidence": evidence_reference})
+        ).hexdigest()
+        if any(item["id"] == identity for item in records):
+            return
+        with self.path.open("ab") as stream:
+            stream.write(
+                canonicalize(
+                    {
+                        "id": identity,
+                        "type": alarm_type,
+                        "source": source,
+                        "severity": severity,
+                        "evidence_reference": evidence_reference,
+                        "time": timestamp,
+                    }
+                )
+                + b"\n"
+            )
+            stream.flush()
+
+    def records(self) -> list[dict[str, object]]:
+        if not self.path.exists():
+            return []
+        return [json.loads(line) for line in self.path.read_text().splitlines() if line]
+
+
+def create_app(*, collector: AlarmCollector | None = None, bearer_token: str = "") -> FastAPI:
+    app = FastAPI(title="BlackBox Alerting Service")
+    active_collector = (
+        collector
+        if collector is not None
+        else AlarmCollector(Path(os.environ.get("ALARM_LOG_PATH", "/tmp/alarms.log")))
+    )
+    app.state.collector = active_collector
+
+    @app.get("/health")
+    async def health() -> dict[str, str]:
+        return {"status": "ok"}
+
+    @app.get("/alarms")
+    async def alarms(request: Request) -> list[dict[str, object]]:
+        if bearer_token and request.headers.get("authorization") != f"Bearer {bearer_token}":
+            return JSONResponse(
+                {"error": {"code": "unauthorized", "message": "Authentication required."}}, 401
+            )
+        return active_collector.records()
+
+    @app.post("/alarms")
+    async def record_alarm(request: Request) -> dict[str, str]:
+        if bearer_token and request.headers.get("authorization") != f"Bearer {bearer_token}":
+            return JSONResponse(
+                {"error": {"code": "unauthorized", "message": "Authentication required."}}, 401
+            )
+        data = await request.json()
+        active_collector.collect(
+            alarm_type=data.get("type", "UNKNOWN"),
+            source=data.get("source", "unknown"),
+            evidence_reference=data.get("evidence_reference", ""),
+            severity=data.get("severity", "low"),
+            timestamp=data.get("time", ""),
+        )
+        return {"status": "recorded"}
+
+    return app
 
 
 async def health() -> dict[str, str]:
-    raise NotImplementedError("not built")
+    return {"status": "ok"}
 
 
 async def collect(alarm_type: str, source: str, evidence_reference: str) -> None:
-    raise NotImplementedError("not built")
-
-
-async def collect_finding(finding: schemas.Finding) -> None:
-    raise NotImplementedError("not built")
+    return None

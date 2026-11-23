@@ -1,8 +1,31 @@
 # Build log
 
+## Completed task status
+
+| Task | Status | Commit/tag |
+| --- | --- | --- |
+| A1 | Complete | `1faf281` / `a1-done` |
+| A1b | Complete | `f1e65f1` / `a1b-done` |
+| K1a | Complete | `69be04d` / `k1a-done` |
+| K1b | Complete | `3d2d5cc` / `k1b-done` |
+| K1c | Complete | `92c839a` / `k1c-done` |
+| K2a | Complete | `b9f2d44` / `k2a-done` |
+| K2b | Complete | `5182e79` / `k2b-done` |
+| K2c | Complete | `ca535c4` / `k2c-done` |
+| D0 | Complete | this commit / `d0-done` |
+
+The completed task branches through K2c are merged into `Pankaj_backend`; the
+corresponding `main-after-*` tags are `main-after-a`, `main-after-k`, and
+`main-after-k2c`.
+
 | Date | Stage | What changed | Gate status |
 | --- | --- | --- | --- |
 | 2026-10-11 | Stage 2 signer, Task A only | Live per-seal clock; durable fixed UTC-second quota beside signer state; 60 new clock/quota tests. `make lint`: pass (165 files formatted); `pytest -q`: 406 passed, 14 xfailed, 1 existing dependency warning; `make gates`: 204 passed, 2 xfailed; `make attack`: honest VERIFIED and all seven mutations detected. | G1/G2 still pass; G3/G4 pending. Actual power-loss durability, container deployment and complete storage-deletion/uncertain chain-commit recovery not verified; Task D deferred. No epoch rollover changes. |
 | 2026-10-11 | Stage 2 signer, Task B only | Required configured `log_id`; wrong-log candidates refused before quota/signing/state writes; 13 new tests. Real pre-fix wrong-log regression failed to raise. `make lint`: pass (166 files formatted); `pytest -q`: 419 passed, 14 xfailed, 1 existing dependency warning; `make gates`: 204 passed, 2 xfailed; `make attack`: all expected verdicts pass. | G1/G2 still pass; G3/G4 pending. Startup root/certificate validation and durable storage identity binding remain unverified. Tasks C/D/E not started. |
 | 2026-10-11 | Stage 2 signer, Task C proposal only | Compared authenticated/recoverable intent-outcome history sources; no code changed. `make lint`: pass; `pytest -q`: 419 passed, 14 xfailed, 1 existing dependency warning; `make gates`: 204 passed, 2 xfailed; `make attack`: all expected verdicts pass. | No implementation or gate advance. Awaiting history-source decision; Tasks D/E not started. |
 | 2026-10-11 | Stage 2 signer, Task D only | Durable signer state now records `log_id`; initialized-state sentinel and pre-commit marker make missing, legacy/corrupt and uncertain post-replacement commits fail closed. Added state/recovery tests. `make lint`: pass (166 files formatted); `pytest -q`: 423 passed, 14 xfailed, 1 existing dependency warning; `make gates`: 204 passed, 2 xfailed; `make attack`: all expected verdicts pass. | G1/G2 still pass; G3/G4 pending. PostgreSQL/HSM/power-loss testing and future outcome-index atomicity remain unverified. |
+| 2026-10-19 | Stage 2 signer, Task C only | Added a fake `HistorySource` protocol and authenticated complete-prefix verification for intent/prior-outcome evidence: signatures, hashes, chain links, log identity and epoch certificates are checked; malformed, missing, stale, unverifiable and disagreeing evidence fails closed. Added a versioned signer-owned `intent_seq -> outcome_hash` sidecar with deterministic lossless compaction and a shared pre-commit marker for state/index replacement. Added 10 history/outcome tests. `make lint`: pass (169 files formatted); `pytest -q`: 433 passed, 14 xfailed, 1 existing dependency warning; `make gates`: 204 passed, 2 xfailed; `make attack`: honest VERIFIED, edit/rehash TAMPERED, delete MISSING, reorder/duplicate/truncate/certificate-swap/signature-swap TAMPERED, plain hash-chain control ACCEPTED. | G1/G2 still pass; G3/G4 pending. No real ledger client, operator rebuild protocol, power-loss injection run, or transaction spanning the signer and ledger is implemented or claimed. |
+| 2026-10-20 | Stage 2 signer, Task E2a recovery verifier only | Approved Option D amendment: added signed `recovery` schema with exact burned-range fields, verifier transition validation, `RECOVERY_DISCONTINUITY` reporting/summary flag with precedence below `MISSING` and above `UNVERIFIED`, and a new unsigned-recovery tamper case. Added named recovery/error-boundary tests without changing existing tests. `make lint`: pass (175 files formatted); `pytest -q`: 448 passed, 14 xfailed, 1 existing dependency warning; `make gates`: 204 passed, 2 xfailed; `make attack`: honest VERIFIED, original cases unchanged, new unsigned recovery case TAMPERED, plain hash-chain control ACCEPTED. | No signer, journal, rollover, witness, or Task R implementation. The issuance journal is documented as crash/operator-error protection only, not malicious-host protection; witnesses remain the defence. |
+| 2026-10-20 | Stage 2 signer, Task S6 | Added a fixed, derandomized Hypothesis test for seal/clock/rollover interleavings and three new tamper-battery cases: stale-epoch signing, skipped epoch id, and the existing epoch-certificate swap expectation. `make lint`: pass (182 files formatted); `pytest -q`: 482 passed, 14 xfailed, 1 existing dependency warning; `make gates`: 204 passed, 2 xfailed; `make attack`: honest VERIFIED and all expected mutations detected. | Key zeroization, real power-loss behavior, HSM/KMS custody, Docker deployment, and lost-response reconciliation remain unproven or pending E2b. Idle-signer rollover was subsequently implemented by K2b and covered by K2c. |
+| 2026-10-20 | Stage A1, attest operation | Implemented core domain-separated attestation construction/expiry verification, pure digest/risk/checkpoint rules, and authenticated `/attest` request parsing. High-risk attestation fails closed without checkpoint evidence. | Durable attested-digest persistence, real witnessed-checkpoint evidence, provider integration, and full G4 remain pending. |
+| 2026-10-20 | Stage A1b, attest provenance and integration | Bound attestation provenance to authenticated history plus the current signer's own sealed-intent record; added real `SignerSealer` → `/attest` → core verification coverage, state-file immutability checks, repeated-call invariant coverage, and three attestation tamper cases. | Real checkpoint evidence and provider-side verification remain pending; restart re-issuance for the same sealed digest is allowed by design. |

@@ -5,9 +5,14 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+from libs.blackbox_core.attestation import build_attestation, verify_attestation
 from libs.blackbox_core.chain import entry_hash, verify_chain
+from libs.blackbox_core.checkpoint import WitnessedCheckpointEvidence
 from libs.blackbox_core.evidence import Bundle, PinnedKeys
 from libs.blackbox_core.schemas import SealedEntry, parse_entry
+from libs.blackbox_core.signing import verify_structure
+from tests._dev_keys import dev_key
+from tests.unit.test_epochs_rules import certificates, request_pair
 from tools.attack_suite.fixture import build_demo
 from tools.verifier.verify import verify_evidence
 
@@ -39,11 +44,87 @@ def variants(bundle: Bundle) -> dict[str, Bundle]:
     a["certificate"], b["certificate"] = b["certificate"], a["certificate"]
     cases["swap_epoch_certificates"] = Bundle.model_validate(data)
     data = bundle.model_dump()
+    data["entries"][5]["body"]["epoch_id"] = 0
+    cases["stale_epoch_signing"] = Bundle.model_validate(data)
+    data = bundle.model_dump()
+    data["epochs"][1]["epoch_id"] = 3
+    cases["skipped_epoch_id"] = Bundle.model_validate(data)
+    data = bundle.model_dump()
     a = data["entries"][5]
     b = data["entries"][6]
     a["signature"], b["signature"] = b["signature"], a["signature"]
     cases["swap_signatures"] = Bundle.model_validate(data)
+    data = bundle.model_dump()
+    del data["entries"][7]
+    recovery = data["entries"][7].copy()
+    recovery["body"] = {
+        **recovery["body"],
+        "type": "recovery",
+        "seq": 8,
+        "epoch_id": 1,
+        "burned_first_seq": 7,
+        "burned_last_seq": 7,
+        "last_known_entry_hash": entry_hash(parse_entry(data["entries"][6]["body"])),
+        "lost_epoch_id": 0,
+    }
+    data["entries"].insert(7, recovery)
+    cases["unsigned_recovery_for_deleted_seq_7"] = Bundle.model_validate(data)
+    data = bundle.model_dump()
+    data["checkpoints"][-1]["checkpoint"]["root_hash"] = "sha256:" + "f" * 64
+    cases["modified_checkpoint_root"] = Bundle.model_validate(data)
     return cases
+
+
+def attestation_variants() -> dict[str, bool]:
+    """Return consumer outcomes for independent attestation mutations."""
+    _root, key, _epoch, _intermediate, _certificate = certificates()
+    _state, intent, _outcome = request_pair()
+    valid = build_attestation(
+        intent,
+        "2026-01-01T00:00:00.000Z",
+        "2026-01-01T00:00:30.000Z",
+        key,
+    )
+    public_key = key.public_key().public_bytes_raw()
+    different_digest = valid.model_copy(update={"body_digest": "sha256:" + "f" * 64})
+    expired = verify_attestation(valid, public_key, "2026-01-01T00:00:30.000Z")
+    wrong_label = verify_structure(valid, public_key, "entry")
+    return {
+        "attestation_different_digest": verify_attestation(
+            different_digest, public_key, "2026-01-01T00:00:01.000Z"
+        ),
+        "attestation_expired": expired,
+        "attestation_wrong_label": wrong_label,
+    }
+
+
+def witnessed_checkpoint_variants() -> dict[str, bool]:
+    keys = [dev_key(i) for i in range(1, 8)]
+    bundle, pins = build_demo([(key, key.public_key().public_bytes_raw()) for key in keys])
+    evidence = bundle.checkpoints[-1]
+    common = dict(
+        checkpoint=evidence.checkpoint,
+        witness_set=bundle.witness_set,
+        root_public_key=keys[0].public_key().public_bytes_raw(),
+        intermediate_certificate=bundle.intermediates[0],
+        epoch_certificate=bundle.epochs[1],
+    )
+    forged = WitnessedCheckpointEvidence(
+        **common,
+        cosignatures=[
+            evidence.cosignatures[0].model_copy(update={"witness_signature": ""}),
+            evidence.cosignatures[1].model_copy(update={"witness_signature": ""}),
+            evidence.cosignatures[2],
+        ],
+    )
+    duplicates = WitnessedCheckpointEvidence(
+        **common,
+        cosignatures=[evidence.cosignatures[0]] * 3,
+    )
+    return {
+        "forged_cosignature": forged.covers(9, pins.log_id),
+        "quorum_of_duplicate_witnesses": duplicates.covers(9, pins.log_id),
+    }
 
 
 def evaluate(bundle: Bundle, pins: PinnedKeys) -> dict[str, object]:
@@ -59,7 +140,11 @@ def evaluate(bundle: Bundle, pins: PinnedKeys) -> dict[str, object]:
         "duplicate": "TAMPERED",
         "truncate": "MISSING",
         "swap_epoch_certificates": "TAMPERED",
+        "stale_epoch_signing": "TAMPERED",
+        "skipped_epoch_id": "TAMPERED",
         "swap_signatures": "TAMPERED",
+        "unsigned_recovery_for_deleted_seq_7": "TAMPERED",
+        "modified_checkpoint_root": "TAMPERED",
     }
     for name, changed in cases.items():
         report = verify_evidence(changed, pins)
@@ -73,6 +158,19 @@ def evaluate(bundle: Bundle, pins: PinnedKeys) -> dict[str, object]:
                 "affected_sequences": [e.seq for e in failed],
             }
         )
+    attestation_cases = attestation_variants()
+    if any(attestation_cases.values()):
+        raise AssertionError(attestation_cases)
+    rows.extend(
+        {"variant": name, "verdict": "REJECTED", "affected_sequences": []}
+        for name in attestation_cases
+    )
+    witness_cases = witnessed_checkpoint_variants()
+    if any(witness_cases.values()):
+        raise AssertionError(witness_cases)
+    rows.extend(
+        {"variant": name, "verdict": "REJECTED", "affected_sequences": []} for name in witness_cases
+    )
     rehashed = cases["edit_and_rehash"]
     unsigned_accepts = (
         verify_chain([SealedEntry.model_validate(e) for e in rehashed.entries]) is None

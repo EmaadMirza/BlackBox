@@ -1,99 +1,106 @@
--- TODO(spec §10.1): validate migration and caller authorization in Stage 2.
--- Storage scaffold only. Run with a migration owner, NEVER the service role.
+-- L1a ledger schema. Run as the migration owner, never as ledger_app.
 BEGIN;
-CREATE SCHEMA blackbox;
+
+CREATE SCHEMA IF NOT EXISTS blackbox;
 REVOKE ALL ON SCHEMA blackbox FROM PUBLIC;
 
--- NOLOGIN group roles: provision login identities out of band; no embedded passwords.
-CREATE ROLE blackbox_append NOLOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE NOINHERIT;
-CREATE ROLE blackbox_read NOLOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE NOINHERIT;
-GRANT USAGE ON SCHEMA blackbox TO blackbox_append, blackbox_read;
+DO $$ BEGIN
+    IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'ledger_owner') THEN
+        CREATE ROLE ledger_owner NOLOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE NOINHERIT;
+    END IF;
+    IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'ledger_app') THEN
+        CREATE ROLE ledger_app NOLOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE NOINHERIT;
+    END IF;
+END $$;
 
-CREATE TABLE blackbox.entries (
+CREATE TABLE IF NOT EXISTS blackbox.schema_version (
+    version INTEGER PRIMARY KEY,
+    applied_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE TABLE IF NOT EXISTS blackbox.entries (
     log_id TEXT NOT NULL,
     seq BIGINT NOT NULL CHECK (seq >= 0),
-    epoch_id BIGINT NOT NULL CHECK (epoch_id >= 0),
-    entry_hash TEXT NOT NULL,
-    prev_hash TEXT NOT NULL,
     sealed_entry JSONB NOT NULL,
-    canonical_bytes BYTEA NOT NULL,
+    entry_hash TEXT NOT NULL UNIQUE,
+    prev_hash TEXT NOT NULL,
+    epoch_id BIGINT NOT NULL CHECK (epoch_id >= 0),
+    type TEXT NOT NULL,
+    received_at TIMESTAMPTZ NOT NULL DEFAULT now(),
     PRIMARY KEY (log_id, seq)
 );
-CREATE TABLE blackbox.checkpoints (
+CREATE TABLE IF NOT EXISTS blackbox.checkpoints (
     checkpoint_hash TEXT PRIMARY KEY,
     log_id TEXT NOT NULL,
     tree_size BIGINT NOT NULL CHECK (tree_size >= 0),
     checkpoint JSONB NOT NULL,
     canonical_bytes BYTEA NOT NULL
 );
-CREATE TABLE blackbox.cosignatures (
+CREATE TABLE IF NOT EXISTS blackbox.cosignatures (
     checkpoint_hash TEXT NOT NULL REFERENCES blackbox.checkpoints(checkpoint_hash),
     witness_id TEXT NOT NULL,
     cosignature JSONB NOT NULL,
     PRIMARY KEY (checkpoint_hash, witness_id)
 );
-CREATE TABLE blackbox.payload_refs (
-    reference TEXT PRIMARY KEY,
-    commitment TEXT NOT NULL,
+CREATE TABLE IF NOT EXISTS blackbox.conflicts (
+    conflict_id BIGSERIAL PRIMARY KEY,
     log_id TEXT NOT NULL,
     seq BIGINT NOT NULL,
-    FOREIGN KEY (log_id, seq) REFERENCES blackbox.entries(log_id, seq)
+    existing_hash TEXT NOT NULL,
+    rejected_hash TEXT NOT NULL,
+    evidence JSONB NOT NULL,
+    recorded_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
-CREATE TABLE blackbox.approvals (
-    receipt_id TEXT PRIMARY KEY,
-    log_id TEXT NOT NULL,
-    intent_seq BIGINT NOT NULL,
-    receipt JSONB NOT NULL,
-    FOREIGN KEY (log_id, intent_seq) REFERENCES blackbox.entries(log_id, seq)
-);
-CREATE TABLE blackbox.findings (
-    finding_id TEXT PRIMARY KEY,
-    finding_type TEXT NOT NULL,
-    detection_time TIMESTAMPTZ NOT NULL,
-    evidence JSONB NOT NULL
-);
-CREATE TABLE blackbox.alarms (
-    alarm_id TEXT PRIMARY KEY,
-    alarm_type TEXT NOT NULL,
-    source TEXT NOT NULL,
-    detection_time TIMESTAMPTZ NOT NULL,
-    evidence JSONB NOT NULL
-);
--- Frontier snapshots are append-only, keyed by covered tree size.
-CREATE TABLE blackbox.merkle_frontiers (
-    log_id TEXT NOT NULL,
-    tree_size BIGINT NOT NULL CHECK (tree_size >= 0),
-    frontier JSONB NOT NULL,
-    PRIMARY KEY (log_id, tree_size)
-);
-CREATE FUNCTION blackbox.reject_mutation() RETURNS trigger
+
+CREATE OR REPLACE FUNCTION blackbox.reject_mutation() RETURNS trigger
 LANGUAGE plpgsql AS $$
 BEGIN
-    RAISE EXCEPTION 'BlackBox storage is append-only: % is forbidden', TG_OP;
-    RETURN NULL;
+    RAISE EXCEPTION 'BlackBox storage is append-only: % is forbidden', TG_OP
+        USING ERRCODE = '55000';
 END;
 $$;
-CREATE TRIGGER entries_no_mutation BEFORE UPDATE OR DELETE OR TRUNCATE ON blackbox.entries
-    FOR EACH STATEMENT EXECUTE FUNCTION blackbox.reject_mutation();
-CREATE TRIGGER checkpoints_no_mutation BEFORE UPDATE OR DELETE OR TRUNCATE ON blackbox.checkpoints
-    FOR EACH STATEMENT EXECUTE FUNCTION blackbox.reject_mutation();
-CREATE TRIGGER cosignatures_no_mutation BEFORE UPDATE OR DELETE OR TRUNCATE ON blackbox.cosignatures
-    FOR EACH STATEMENT EXECUTE FUNCTION blackbox.reject_mutation();
-CREATE TRIGGER payload_refs_no_mutation BEFORE UPDATE OR DELETE OR TRUNCATE ON blackbox.payload_refs
-    FOR EACH STATEMENT EXECUTE FUNCTION blackbox.reject_mutation();
-CREATE TRIGGER approvals_no_mutation BEFORE UPDATE OR DELETE OR TRUNCATE ON blackbox.approvals
-    FOR EACH STATEMENT EXECUTE FUNCTION blackbox.reject_mutation();
-CREATE TRIGGER findings_no_mutation BEFORE UPDATE OR DELETE OR TRUNCATE ON blackbox.findings
-    FOR EACH STATEMENT EXECUTE FUNCTION blackbox.reject_mutation();
-CREATE TRIGGER alarms_no_mutation BEFORE UPDATE OR DELETE OR TRUNCATE ON blackbox.alarms
-    FOR EACH STATEMENT EXECUTE FUNCTION blackbox.reject_mutation();
-CREATE TRIGGER frontier_no_mutation BEFORE UPDATE OR DELETE OR TRUNCATE ON blackbox.merkle_frontiers
-    FOR EACH STATEMENT EXECUTE FUNCTION blackbox.reject_mutation();
+
+CREATE OR REPLACE FUNCTION blackbox.enforce_entry_contiguity() RETURNS trigger
+LANGUAGE plpgsql AS $$
+DECLARE
+    previous_seq BIGINT;
+    previous_hash TEXT;
+BEGIN
+    SELECT e.seq, e.entry_hash INTO previous_seq, previous_hash
+    FROM blackbox.entries e WHERE e.log_id = NEW.log_id
+    ORDER BY e.seq DESC LIMIT 1 FOR UPDATE;
+    IF previous_seq IS NULL THEN
+        IF NEW.seq <> 0 THEN
+            RAISE EXCEPTION 'entry sequence must begin at zero' USING ERRCODE = '23514';
+        END IF;
+    ELSE
+        IF NEW.seq <> previous_seq + 1 OR NEW.prev_hash <> previous_hash THEN
+            RAISE EXCEPTION 'entry sequence or predecessor is not contiguous'
+                USING ERRCODE = '23514';
+        END IF;
+    END IF;
+    RETURN NEW;
+END;
+$$;
+
+DROP TRIGGER IF EXISTS entries_no_mutation ON blackbox.entries;
+CREATE TRIGGER entries_no_mutation
+BEFORE UPDATE OR DELETE OR TRUNCATE ON blackbox.entries
+FOR EACH STATEMENT EXECUTE FUNCTION blackbox.reject_mutation();
+DROP TRIGGER IF EXISTS checkpoints_no_mutation ON blackbox.checkpoints;
+CREATE TRIGGER checkpoints_no_mutation
+BEFORE UPDATE OR DELETE OR TRUNCATE ON blackbox.checkpoints
+FOR EACH STATEMENT EXECUTE FUNCTION blackbox.reject_mutation();
+DROP TRIGGER IF EXISTS entries_contiguous ON blackbox.entries;
+CREATE TRIGGER entries_contiguous
+BEFORE INSERT ON blackbox.entries
+FOR EACH ROW EXECUTE FUNCTION blackbox.enforce_entry_contiguity();
+
 REVOKE ALL ON ALL TABLES IN SCHEMA blackbox FROM PUBLIC;
-GRANT SELECT, INSERT ON ALL TABLES IN SCHEMA blackbox TO blackbox_append;
-GRANT SELECT ON ALL TABLES IN SCHEMA blackbox TO blackbox_read;
-REVOKE ALL ON FUNCTION blackbox.reject_mutation() FROM PUBLIC;
--- No writer owns tables or has UPDATE, DELETE, TRUNCATE, DDL or superuser rights.
--- JSONB is for indexing; signature verification MUST use/rebuild canonical bytes.
--- Gateway/signer caller identity is an API concern, not enforced by these grants.
+GRANT USAGE ON SCHEMA blackbox TO ledger_app;
+GRANT SELECT, INSERT ON blackbox.entries, blackbox.conflicts TO ledger_app;
+GRANT SELECT ON blackbox.schema_version, blackbox.checkpoints, blackbox.cosignatures TO ledger_app;
+GRANT INSERT ON blackbox.cosignatures TO ledger_app;
+GRANT USAGE, SELECT ON SEQUENCE blackbox.conflicts_conflict_id_seq TO ledger_app;
+
+INSERT INTO blackbox.schema_version(version) VALUES (1) ON CONFLICT (version) DO NOTHING;
 COMMIT;

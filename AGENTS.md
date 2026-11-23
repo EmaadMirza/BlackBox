@@ -5,11 +5,39 @@ The canonical implementation reference is `docs/BlackBox_v4.md`; the original ro
 copy is preserved. Keep copies consistent if the user later authorizes spec edits.
 
 ## Current scope
-Stage 1 is authorized: pure core library, offline verifier, CLI and tests. Follow
-`docs/stage1-protocol.md` for concrete choices left unspecified in the prose spec.
-The user authorized proceeding with these documented choices. Do not modify the
-original spec. Stage 2 services remain stubs until the next authorized stage.
-Tests/_dev_keys.py and tools/ceremony.py are the only Stage 1 key-generation sites;
+Stage 1 (core library, offline verifier, CLI, tests) and Stage 2 (signer, ledger,
+witness in-process) are complete. Follow `docs/stage1-protocol.md` for concrete
+choices left unspecified in the prose spec. Do not modify the original spec.
+
+Stage 3 is now authorized, limited to this prototype scope:
+- Gateway: minimal pipeline (authenticate, normalize, seal intent, forward, seal
+  outcome). No web lane, no MCP adapter.
+- Provider mock: body-digest enforcement, attestation verification, event log,
+  enforcement mode, idempotency and per-call limits.
+- Payload store: commitment storage and resolution.
+- Signer `/checkpoint` HTTP route: wire the existing pure checkpoint rules to HTTP.
+- Approval service: receipt verification, registered-key check, nonce uniqueness,
+  expiry, approver-≠-requester, args-commitment match.
+- Reconciler: join ledger entries with provider event feed, emit findings
+  (UNRECORDED_ACTION, UNATTESTED_ACTION, PHANTOM_OUTCOME, ORPHAN_INTENT,
+  ARGS_MISMATCH, RESULT_MISMATCH).
+- Witness HTTP processor: expose the existing checkpoint-verification logic over
+  HTTP so witnesses can be called by the ledger fan-out.
+
+Explicitly out of scope for this stage (do not build; each is recorded in
+`docs/limitations.md` § Known limitations):
+- Docker/Compose validation (DK2, DK3).
+- Acceptance scenarios E5 (agent-network bypass), E9 (load/performance),
+  E11 (stolen epoch key / HSM).
+- HSM/KMS/TPM key custody and key zeroization.
+- Anchor service (`services/anchor`).
+- Task E full recovery (durable quarantine, recovery anchor enforcement).
+- Task E2b (issuance journal for lost-response reconciliation).
+- Task R (automated operator rebuild tool).
+- mTLS and directional caller-/operation-specific authorization.
+- Power-loss injection tests.
+
+Tests/_dev_keys.py and tools/ceremony.py are the only key-generation sites;
 ephemeral keys may be passed into library signing operations. This is the user's
 explicit temporary deviation from signer-only key custody.
 
@@ -30,7 +58,8 @@ explicit temporary deviation from signer-only key custody.
 
 ## Checks and stage gates
 Use `uv sync --frozen --extra services --extra dev`, then `make lint` and `make test`.
-Validate all three Compose files. G1/G2 precede service implementation; G3 precedes
-building gateway behavior; G4 precedes evaluation. XFAIL does not pass a gate.
-Record actual validation outcomes and unresolved spec ambiguities. No stage advances
-on a placeholder, missing tool, skipped test, or unverified security claim.
+G1/G2 precede service implementation (passed). G3 precedes building gateway
+behavior (passed, in-process + local PostgreSQL). G4 precedes evaluation; it is
+the current target gate for Stage 3 prototype scope. XFAIL does not pass a gate.
+No stage advances on a placeholder, missing tool, skipped test, or unverified
+security claim. Do not weaken any existing G1–G3 test.

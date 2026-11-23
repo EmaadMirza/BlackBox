@@ -4,8 +4,9 @@ This authorized wire-contract decision supplements spec §§7.3 and 9 without
 changing the original specification. `services/signer/http_contract.py` declares
 transport models/constants and reuses the signed types in
 `libs/blackbox_core/schemas.py`. The liveness route and shared bearer-auth
-dependency are implemented; seal, attestation and checkpoint routes remain
-unimplemented. These tests are not evidence that G3/G4 or E1–E12 pass.
+ dependency are implemented; seal and attestation routes are implemented for the
+ current in-process signer scope, while checkpoint remains unimplemented. These
+ tests are not evidence that G3/G4 or E1–E12 pass.
 
 ## Endpoints and JSON
 
@@ -148,7 +149,7 @@ be added without changing the envelope or status meanings.
 | --- | --- | --- |
 | 200 | Successful operation | Endpoint-specific response above |
 | 401 | Missing/invalid auth with configured token | `invalid_auth` / `Authentication required.` |
-| 409 | Well-formed request conflicts with signer rules or available state | `rule_conflict` / `Request conflicts with signer rules.` |
+| 409 | Well-formed request conflicts with signer rules or non-retryable authenticated state | `rule_conflict` / `Request conflicts with signer rules.`; `history_integrity` / `History evidence failed integrity validation.`; `outcome_conflict` / `The intent already has a conflicting outcome.`; `outcome_index_invalid` / `Signer outcome state is invalid.` |
 | 422 | Malformed JSON or schema/unsigned-request violation | `invalid_request` / `Invalid request.` |
 | 503 | Dependency, key, or usable signer state unavailable | `signer_unavailable` / `Signer unavailable.`; `auth_unavailable` / `Authentication unavailable.` |
 | 500 | Unexpected internal error | `internal_error` / `Internal error.` |
@@ -161,13 +162,15 @@ Schema validation must happen before calling the sealer, rather than mapping all
 No response pretends a failed operation succeeded. These mappings and exception
 sanitization are requirements for the future adapter, not implemented behavior.
 
-## Attest/checkpoint prerequisites (not implemented)
+## Attest/checkpoint prerequisites
 
 - **Attest:** authenticated lookup/verification of the sealed intent; persistent
   prior-attestation/digest tracking; trusted risk classification and verified
   witnessed-checkpoint coverage for high-risk intents; attestation-key custody,
   trusted time, expiry handling and core domain-separated signing. Apply §9.4
   before issuing any attestation. A sequence alone is not sufficient evidence.
+  The current implementation fails closed for high-risk intents because the real
+  witnessed-checkpoint source is not yet available.
 - **Checkpoint:** authenticated ledger tree-state/evidence access; durable signer
   last-sealed state and serialized epoch lifecycle; verification of claimed size
   and latest-entry hash against what the signer sealed; trusted time and a usable

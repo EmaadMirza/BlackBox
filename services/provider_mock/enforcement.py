@@ -1,9 +1,8 @@
-"""Attestation enforcement switch Scaffold only; no runtime behavior."""
+"""Attestation enforcement switch."""
 
 from __future__ import annotations
 
-# TODO(spec §14.2): implement and validate before enabling this module.
-
 
 def require_attestation(enabled: bool, valid_attestation: bool) -> None:
-    raise NotImplementedError("not built")
+    if enabled and not valid_attestation:
+        raise PermissionError("unattested action rejected under enforcement mode")
